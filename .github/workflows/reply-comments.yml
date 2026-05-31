@@ -2,7 +2,7 @@ name: Reply to new comments
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # daily at 9am UTC
+    - cron: '0 */2 * * *'  # every 2 hours
   workflow_dispatch:       # allow manual runs from the Actions tab
 
 jobs:

@@ -152,7 +152,7 @@ make clean    # remove ./bin/
 
 ## Automated daily replies (GitHub Actions)
 
-The included workflow (`.github/workflows/reply-comments.yml`) runs every day at 9 AM UTC and automatically replies to new comments on all monitored videos.
+The included workflow (`.github/workflows/reply-comments.yml`) runs every 2 hours and automatically replies to new comments on all monitored videos.
 
 ### videos.yaml
 
