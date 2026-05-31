@@ -67,7 +67,19 @@ Filter by publish date:
 tubectl video --video-id <videoID> get-comments --published-after 2024-01-01
 ```
 
-The output includes the `comment-id` needed for the comment commands below.
+Output as JSON (useful for scripting and automation):
+
+```bash
+tubectl video --video-id <videoID> get-comments --format json
+```
+
+The JSON output contains `id`, `author`, `published_at`, and `text` for each comment. You can pipe it into `jq` to extract just the IDs:
+
+```bash
+tubectl video --video-id <videoID> get-comments --format json | jq -r '.[].id'
+```
+
+The default format is `text`, which includes the `comment-id` needed for the comment commands below.
 
 ### Get the transcript of a video
 
@@ -138,12 +150,48 @@ make test     # run all tests
 make clean    # remove ./bin/
 ```
 
+## Automated daily replies (GitHub Actions)
+
+The included workflow (`.github/workflows/reply-comments.yml`) runs every day at 9 AM UTC and automatically replies to new comments on all monitored videos.
+
+### videos.yaml
+
+Add the video IDs you want to monitor to `videos.yaml` at the repo root:
+
+```yaml
+videos:
+  - ITQioNZ_m_U
+  - dQw4w9WgXcQ
+```
+
+The workflow iterates over every ID in this file, downloads its transcript once (cached across runs), then calls `suggest-reply --auto-approve` for each comment published in the last 24 hours.
+
+### Required GitHub secrets
+
+| Secret | Description |
+|---|---|
+| `YOUTUBE_CLIENT_ID` | OAuth2 client ID |
+| `YOUTUBE_CLIENT_SECRET` | OAuth2 client secret |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `TUBECTL_TOKEN` | Base64-encoded `~/.config/tubectl/token.json` |
+
+Generate `TUBECTL_TOKEN` locally after authenticating:
+
+```bash
+base64 -w0 ~/.config/tubectl/token.json
+```
+
+### Manual trigger
+
+You can also trigger the workflow manually from the **Actions** tab → **Reply to new comments** → **Run workflow**.
+
 ## Project structure
 
 ```
 cmd/tubectl/       # CLI entry point and command definitions
 internal/youtube/  # YouTube API client, models, auth, and caption parsing
 internal/openai/   # OpenAI chat completions client
+videos.yaml        # Video IDs to monitor with the GitHub Actions workflow
 ```
 
 ## Data storage

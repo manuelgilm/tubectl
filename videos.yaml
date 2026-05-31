@@ -1,0 +1,7 @@
+# List of YouTube video IDs to monitor for new comments.
+# Add one video ID per line under the `videos` key.
+# The workflow will reply to new comments on all listed videos daily.
+videos:
+  - ITQioNZ_m_U
+  # - dQw4w9WgXcQ
+  # - De2hGBxJ2j4

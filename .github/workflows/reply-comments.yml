@@ -1,0 +1,80 @@
+name: Reply to new comments
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # daily at 9am UTC
+  workflow_dispatch:       # allow manual runs from the Actions tab
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build tubectl
+        run: go build -o tubectl ./cmd/tubectl
+
+      # To generate the token secret: base64 -w0 ~/.config/tubectl/token.json
+      # Store the result as the TUBECTL_TOKEN secret in GitHub.
+      - name: Restore OAuth token
+        run: |
+          mkdir -p ~/.config/tubectl
+          echo "${{ secrets.TUBECTL_TOKEN }}" | base64 -d > ~/.config/tubectl/token.json
+          chmod 600 ~/.config/tubectl/token.json
+
+      # Cache all transcripts across runs keyed by the videos.yaml content.
+      # Any change to videos.yaml (new video added) busts the cache.
+      - name: Cache transcripts
+        uses: actions/cache@v4
+        with:
+          path: ~/.config/tubectl/transcripts
+          key: transcripts-${{ hashFiles('videos.yaml') }}
+          restore-keys: |
+            transcripts-
+
+      - name: Fetch transcripts and reply to new comments
+        run: |
+          YESTERDAY=$(date -d 'yesterday' +%Y-%m-%d)
+          VIDEO_IDS=$(yq '.videos[]' videos.yaml)
+
+          for VIDEO_ID in $VIDEO_IDS; do
+            echo "--- Processing video: $VIDEO_ID ---"
+
+            # Download transcript only if not already cached.
+            if [ ! -f "$HOME/.config/tubectl/transcripts/${VIDEO_ID}.json" ]; then
+              echo "Transcript not cached — downloading..."
+              ./tubectl video --video-id "$VIDEO_ID" get-transcript || {
+                echo "WARNING: could not fetch transcript for $VIDEO_ID, skipping."
+                continue
+              }
+            else
+              echo "Transcript already cached."
+            fi
+
+            # Fetch new comment IDs and reply to each.
+            COMMENT_IDS=$(./tubectl video --video-id "$VIDEO_ID" \
+              get-comments --published-after "$YESTERDAY" --format json \
+              | jq -r '.[].id')
+
+            if [ -z "$COMMENT_IDS" ]; then
+              echo "No new comments for $VIDEO_ID."
+              continue
+            fi
+
+            echo "$COMMENT_IDS" | while read -r comment_id; do
+              echo "Replying to comment: $comment_id"
+              ./tubectl comment --comment-id "$comment_id" \
+                suggest-reply --video-id "$VIDEO_ID" --auto-approve \
+                || echo "WARNING: failed to reply to $comment_id, continuing..."
+            done
+          done
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

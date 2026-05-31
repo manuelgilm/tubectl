@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -18,12 +19,17 @@ var videoCmd = &cobra.Command{
 var getCommentsCmd = &cobra.Command{
 	Use:   "get-comments",
 	Short: "List comments for a video",
+	Long: `List comment threads for a video. By default prints human-readable text.
+Use --format json to get machine-readable output suitable for scripting.`,
 	Example: `  tubectl video --video-id dQw4w9WgXcQ get-comments
-  tubectl video --video-id dQw4w9WgXcQ get-comments --published-after 2024-01-01`,
+  tubectl video --video-id dQw4w9WgXcQ get-comments --published-after 2024-01-01
+  tubectl video --video-id dQw4w9WgXcQ get-comments --format json
+  tubectl video --video-id dQw4w9WgXcQ get-comments --published-after 2024-01-01 --format json | jq -r '.[].id'`,
 	RunE: runGetComments,
 }
 
 var publishedAfterFlag string
+var commentsFormatFlag string
 
 var languageFlag string
 
@@ -46,6 +52,7 @@ func init() {
 	videoCmd.MarkPersistentFlagRequired("video-id")
 
 	getCommentsCmd.Flags().StringVar(&publishedAfterFlag, "published-after", "", "Only show comments published after this date (YYYY-MM-DD)")
+	getCommentsCmd.Flags().StringVar(&commentsFormatFlag, "format", "text", "Output format: text or json")
 
 	getTranscriptCmd.Flags().StringVar(&languageFlag, "language", "", "Preferred caption language (e.g. en, es). Defaults to first available.")
 	getTranscriptCmd.Flags().BoolVar(&noCache, "no-cache", false, "Skip the local cache and always fetch from the API")
@@ -120,8 +127,34 @@ func runGetComments(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(result.Items) == 0 {
-		fmt.Println("No comments found.")
+		if commentsFormatFlag == "json" {
+			fmt.Println("[]")
+		} else {
+			fmt.Println("No comments found.")
+		}
 		return nil
+	}
+
+	if commentsFormatFlag == "json" {
+		type jsonComment struct {
+			ID          string `json:"id"`
+			Author      string `json:"author"`
+			PublishedAt string `json:"published_at"`
+			Text        string `json:"text"`
+		}
+		out := make([]jsonComment, 0, len(result.Items))
+		for _, item := range result.Items {
+			s := item.Snippet.TopLevelComment.Snippet
+			out = append(out, jsonComment{
+				ID:          item.Snippet.TopLevelComment.ID,
+				Author:      s.AuthorName,
+				PublishedAt: s.PublishedAt,
+				Text:        s.TextDisplay,
+			})
+		}
+		enc := json.NewEncoder(cmd.OutOrStdout())
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
 	}
 
 	fmt.Printf("%d comment(s) for video %s\n\n", len(result.Items), videoID)
