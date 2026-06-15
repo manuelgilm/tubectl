@@ -13,8 +13,8 @@ CLI for YouTube management and AI-powered automations.
 ## Installation
 
 ```bash
-make build       # compile into ./bin/tubectl
-make install     # install to $GOPATH/bin/tubectl
+make build       # run tests, then compile into ./bin/tubectl
+make install     # run tests, then install to $GOPATH/bin/tubectl
 ```
 
 ## Quick Start
@@ -176,7 +176,7 @@ tubectl video get --video-id dQw4w9WgXcQ > video.json
 
 | Target | Description |
 |---|---|
-| `make build` | Compile into `./bin/tubectl` |
-| `make install` | Install to `$GOPATH/bin/tubectl` |
+| `make build` | Run tests, then compile into `./bin/tubectl` |
+| `make install` | Run tests, then install to `$GOPATH/bin/tubectl` |
 | `make test` | Run all tests |
 | `make clean` | Remove `./bin/` |

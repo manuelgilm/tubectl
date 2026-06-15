@@ -63,3 +63,26 @@ func TestWriteRegistryFile(t *testing.T) {
 	}
 
 }
+
+func TestCreateFolder_alreadyExists(t *testing.T) {
+	dir := t.TempDir()
+
+	err := createFolder(dir)
+	if err != nil {
+		t.Fatalf("createFolder on existing dir: %v", err)
+	}
+}
+
+func TestCreateFolder_nested(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "a", "b", "c")
+
+	err := createFolder(nested)
+	if err != nil {
+		t.Fatalf("createFolder nested: %v", err)
+	}
+
+	if _, err := os.Stat(nested); os.IsNotExist(err) {
+		t.Fatal("expected nested directory to exist")
+	}
+}

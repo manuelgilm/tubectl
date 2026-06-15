@@ -1,19 +1,19 @@
-BINARY=tubectl
-
-build:
-	go build -o $(BINARY) .
-
-install:
-	go install .
-
-clean:
-	rm -f $(BINARY)
-
-.PHONY: build install clean
-
 BINARY   := tubectl
-CMD_PATH := ./cmd/tubectl
+CMD_PATH := .
 INSTALL_DIR := $(shell go env GOPATH)/bin
 
-.PHONY: build install test clean
+build: test
+	mkdir -p bin
+	go build -o bin/$(BINARY) $(CMD_PATH)
 
+install: test
+	go install $(CMD_PATH)
+	@echo "Installed to $(INSTALL_DIR)/$(BINARY)"
+
+test:
+	go test ./...
+
+clean:
+	rm -rf bin/
+
+.PHONY: build install test clean
