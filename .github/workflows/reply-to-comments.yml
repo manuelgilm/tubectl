@@ -1,0 +1,99 @@
+name: Reply to new comments
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install yq
+        run: pip install yq
+
+      - name: Build tubectl
+        run: go build -o tubectl .
+
+      - name: Restore OAuth token
+        run: |
+          mkdir -p ~/.tubectl/auth
+          echo "${{ secrets.TUBECTL_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.json
+          chmod 600 ~/.tubectl/auth/youtube.json
+
+      # Cache state across runs (transcripts + replied comment IDs).
+      - name: Cache tubectl state
+        uses: actions/cache@v4
+        with:
+          path: ~/.tubectl
+          key: tubectl-state-${{ hashFiles('registered_videos.yaml') }}
+          restore-keys: |
+            tubectl-state-
+
+      - name: Fetch transcripts and reply to new comments
+        run: |
+          STATE_FILE="$HOME/.tubectl/state.json"
+
+          # Ensure state file exists.
+          if [ ! -f "$STATE_FILE" ]; then
+            echo '{}' > "$STATE_FILE"
+          fi
+
+          # Only fetch comments published after the previous scheduled run.
+          SINCE=$(date -d '2 hours ago' --iso-8601=seconds)
+          VIDEO_IDS=$(yq '.videos[]' registered_videos.yaml)
+
+          for VIDEO_ID in $VIDEO_IDS; do
+            echo "--- Processing video: $VIDEO_ID ---"
+
+            # Fetch and cache transcript.
+            ./tubectl video get-transcript --video-id "$VIDEO_ID" --language en || \
+              echo "WARNING: transcript not available for $VIDEO_ID, continuing without it."
+
+            ./tubectl video comments --video-id "$VIDEO_ID" --max-results 50 --order time > comments.json
+
+            # Load already-replied IDs for this video.
+            REPLIED=$(jq -r --arg v "$VIDEO_ID" '.[$v][] // [] | .[]' "$STATE_FILE" 2>/dev/null || true)
+
+            COMMENT_IDS=$(cat comments.json | \
+              jq -r --arg after "$SINCE" \
+              '.[] | select(.snippet.topLevelComment.snippet.publishedAt >= $after) | .id')
+
+            if [ -z "$COMMENT_IDS" ]; then
+              echo "No new comments for $VIDEO_ID (since $SINCE)."
+              continue
+            fi
+
+            echo "$COMMENT_IDS" | while read -r comment_id; do
+              # Skip if already replied.
+              if echo "$REPLIED" | grep -qxF "$comment_id"; then
+                echo "Already replied to $comment_id, skipping."
+                continue
+              fi
+
+              echo "Replying to comment: $comment_id"
+              if ./tubectl bot answer-comment \
+                --video-id "$VIDEO_ID" \
+                --comment-id "$comment_id" \
+                --auto-approve; then
+                # Record successful reply.
+                STATE=$(cat "$STATE_FILE")
+                echo "$STATE" | jq --arg v "$VIDEO_ID" --arg c "$comment_id" \
+                  '.[$v] += [$c]' > "$STATE_FILE"
+              else
+                echo "WARNING: failed to reply to $comment_id, continuing..."
+              fi
+            done
+          done
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
