@@ -49,7 +49,7 @@ jobs:
 
           # Only fetch comments published after the previous scheduled run.
           SINCE=$(date -d '2 hours ago' --iso-8601=seconds)
-          VIDEO_IDS=$(yq '.videos[]' registered_videos.yaml)
+          VIDEO_IDS=$(yq -r '.videos[]' registered_videos.yaml)
 
           for VIDEO_ID in $VIDEO_IDS; do
             echo "--- Processing video: $VIDEO_ID ---"
