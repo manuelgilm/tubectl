@@ -6,8 +6,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  reply:
+  fetch-comments:
     runs-on: ubuntu-latest
+    outputs:
+      has_comments: ${{ steps.fetch.outputs.has_comments }}
 
     steps:
       - uses: actions/checkout@v4
@@ -29,8 +31,7 @@ jobs:
           echo "${{ secrets.TUBECTL_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.json
           chmod 600 ~/.tubectl/auth/youtube.json
 
-      # Cache state across runs (transcripts + replied comment IDs).
-      - name: Cache tubectl state
+      - name: Cache state
         uses: actions/cache@v4
         with:
           path: ~/.tubectl
@@ -38,61 +39,102 @@ jobs:
           restore-keys: |
             tubectl-state-
 
-      - name: Fetch transcripts and reply to new comments
+      - name: Fetch new comments
+        id: fetch
         run: |
-          STATE_FILE="$HOME/.tubectl/state.json"
-
-          # Ensure state file exists.
-          if [ ! -f "$STATE_FILE" ]; then
-            echo '{}' > "$STATE_FILE"
-          fi
-
-          # Only fetch comments published after the previous scheduled run.
           SINCE=$(date -d '2 hours ago' --iso-8601=seconds)
           VIDEO_IDS=$(yq -r '.videos[]' registered_videos.yaml)
 
+          echo '[]' > pending.json
+
           for VIDEO_ID in $VIDEO_IDS; do
-            echo "--- Processing video: $VIDEO_ID ---"
+            echo "Fetching comments for $VIDEO_ID (since $SINCE)..."
 
-            # Fetch and cache transcript.
-            ./tubectl video get-transcript --video-id "$VIDEO_ID" --language en || \
-              echo "WARNING: transcript not available for $VIDEO_ID, continuing without it."
+            ./tubectl video get-transcript --video-id "$VIDEO_ID" --language en || true
 
-            ./tubectl video comments --video-id "$VIDEO_ID" --max-results 50 --order time > comments.json
+            ./tubectl video comments --video-id "$VIDEO_ID" --max-results 50 --order time > raw.json
 
-            # Load already-replied IDs for this video.
-            REPLIED=$(jq -r --arg v "$VIDEO_ID" '.[$v][] // [] | .[]' "$STATE_FILE" 2>/dev/null || true)
+            jq --arg v "$VIDEO_ID" --arg after "$SINCE" \
+              '[.[] | select(.snippet.topLevelComment.snippet.publishedAt >= $after) | {video_id: $v, comment_id: .id, replied: false, published_at: .snippet.topLevelComment.snippet.publishedAt}]' \
+              raw.json > new.json
 
-            COMMENT_IDS=$(cat comments.json | \
-              jq -r --arg after "$SINCE" \
-              '.[] | select(.snippet.topLevelComment.snippet.publishedAt >= $after) | .id')
-
-            if [ -z "$COMMENT_IDS" ]; then
-              echo "No new comments for $VIDEO_ID (since $SINCE)."
-              continue
-            fi
-
-            echo "$COMMENT_IDS" | while read -r comment_id; do
-              # Skip if already replied.
-              if echo "$REPLIED" | grep -qxF "$comment_id"; then
-                echo "Already replied to $comment_id, skipping."
-                continue
-              fi
-
-              echo "Replying to comment: $comment_id"
-              if ./tubectl bot answer-comment \
-                --video-id "$VIDEO_ID" \
-                --comment-id "$comment_id" \
-                --auto-approve; then
-                # Record successful reply.
-                STATE=$(cat "$STATE_FILE")
-                echo "$STATE" | jq --arg v "$VIDEO_ID" --arg c "$comment_id" \
-                  '.[$v] += [$c]' > "$STATE_FILE"
-              else
-                echo "WARNING: failed to reply to $comment_id, continuing..."
-              fi
-            done
+            jq -s 'add' pending.json new.json > combined.json
+            mv combined.json pending.json
           done
+
+          # Merge with any previously cached unreplied comments, deduplicating by comment_id.
+          if [ -f ~/.tubectl/pending.json ]; then
+            jq -s 'add | unique_by(.comment_id)' ~/.tubectl/pending.json pending.json > merged.json
+            mv merged.json pending.json
+          fi
+
+          cp pending.json ~/.tubectl/pending.json
+
+          UNREPLIED=$(jq '[.[] | select(.replied == false)] | length' pending.json)
+          echo "has_comments=$UNREPLIED" >> "$GITHUB_OUTPUT"
+          echo "Found $UNREPLIED unreplied comment(s)."
+
+  reply-comments:
+    needs: fetch-comments
+    if: needs.fetch-comments.outputs.has_comments != '0'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build tubectl
+        run: go build -o tubectl .
+
+      - name: Restore OAuth token
+        run: |
+          mkdir -p ~/.tubectl/auth
+          echo "${{ secrets.TUBECTL_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.json
+          chmod 600 ~/.tubectl/auth/youtube.json
+
+      - name: Restore pending comments
+        uses: actions/cache@v4
+        with:
+          path: ~/.tubectl
+          key: tubectl-state-${{ hashFiles('registered_videos.yaml') }}
+
+      - name: Reply to pending comments
+        run: |
+          if [ ! -f ~/.tubectl/pending.json ]; then
+            echo "No pending comments to process."
+            exit 0
+          fi
+
+          UNREPLIED=$(jq -r '.[] | select(.replied == false) | "\(.video_id) \(.comment_id)"' ~/.tubectl/pending.json)
+
+          if [ -z "$UNREPLIED" ]; then
+            echo "All comments already replied."
+            exit 0
+          fi
+
+          echo "$UNREPLIED" | while read -r video_id comment_id; do
+            echo "Replying to comment: $comment_id (video: $video_id)"
+
+            if ./tubectl bot answer-comment \
+              --video-id "$video_id" \
+              --comment-id "$comment_id" \
+              --auto-approve; then
+              jq --arg cid "$comment_id" \
+                '(.[] | select(.comment_id == $cid) | .replied) = true' \
+                ~/.tubectl/pending.json > updated.json
+              mv updated.json ~/.tubectl/pending.json
+            else
+              echo "WARNING: failed to reply to $comment_id, continuing..."
+            fi
+          done
+
+          TOTAL=$(jq 'length' ~/.tubectl/pending.json)
+          DONE=$(jq '[.[] | select(.replied == true)] | length' ~/.tubectl/pending.json)
+          echo "Replied to $DONE / $TOTAL pending comments."
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
