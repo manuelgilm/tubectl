@@ -5,6 +5,11 @@ on:
     - cron: '0 */2 * * *'
   workflow_dispatch:
 
+env:
+  YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+  YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
 jobs:
   fetch-comments:
     runs-on: ubuntu-latest
@@ -135,7 +140,7 @@ jobs:
           TOTAL=$(jq 'length' ~/.tubectl/pending.json)
           DONE=$(jq '[.[] | select(.replied == true)] | length' ~/.tubectl/pending.json)
           echo "Replied to $DONE / $TOTAL pending comments."
-        env:
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        # env:
+        #   YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+        #   YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+        #   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
