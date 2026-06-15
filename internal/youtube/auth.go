@@ -12,6 +12,7 @@ import (
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2"
 	"context"
+	"log"
 )
 const (
 	// ScopeYoutube manages a YouTube account (broadest scope).
@@ -141,6 +142,48 @@ func tokenFromOAuth2(t *oauth2.Token) *Token {
 		TokenType: 	t.TokenType,
 		ExpiresAt: t.Expiry,
 	}
+}
+
+// RefreshToken attempts to refresh an expired OAuth token using the stored
+// refresh token. The YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET environment
+// variables must be set for the refresh to succeed.
+func RefreshToken(tokenPath string) (*Token, error) {
+	clientID := os.Getenv("YOUTUBE_CLIENT_ID")
+	clientSecret := os.Getenv("YOUTUBE_CLIENT_SECRET")
+	if clientID == "" || clientSecret == "" {
+		return nil, fmt.Errorf("YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET must be set to refresh the token")
+	}
+
+	token, err := LoadToken(tokenPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading token for refresh: %w", err)
+	}
+
+	config := &oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Endpoint:     google.Endpoint,
+	}
+
+	ts := config.TokenSource(context.Background(), &oauth2.Token{
+		AccessToken:  token.AccessToken,
+		RefreshToken: token.RefreshToken,
+		TokenType:    token.TokenType,
+		Expiry:       token.ExpiresAt,
+	})
+
+	newToken, err := ts.Token()
+	if err != nil {
+		return nil, fmt.Errorf("token refresh failed: %w", err)
+	}
+
+	saved := tokenFromOAuth2(newToken)
+	if err := SaveToken(tokenPath, saved); err != nil {
+		return nil, fmt.Errorf("saving refreshed token: %w", err)
+	}
+
+	log.Println("OAuth token refreshed successfully")
+	return saved, nil
 }
 
 func youtubeConfigFromEnv() (*oauth2.Config, net.Listener, error) {

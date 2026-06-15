@@ -140,3 +140,38 @@ func BuildMessagesYTBot(text string, transcript string) ([]ai.Message, error){
 		{Role: "system", Content: renderedTemplate},
 	}, nil
 }
+
+func loadOpenAIClient(model string) (*ai.Client, error) {
+	apiKey := os.Getenv("OPENAI_API_KEY")
+
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
+	if apiKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY Not found in environment variables")
+	}
+	return ai.NewClient(apiKey, model), nil
+}
+
+func loadClient() (*youtube.Client, error) {
+	home, err := TubeCtlHome()
+	if err != nil {
+		return nil, err 
+	}
+	
+	tokenPath := filepath.Join(home, "auth", "youtube.json")
+	token, err := youtube.LoadToken(tokenPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading token: %w", err)
+	}
+
+	if !token.Valid() {
+		newToken, err := youtube.RefreshToken(tokenPath)
+		if err != nil {
+			return nil, fmt.Errorf("token expired and refresh failed: %w", err)
+		}
+		token = newToken
+	}
+
+	return youtube.NewClient(token), nil
+}
