@@ -18,10 +18,13 @@ type Client struct {
 	password   string
 }
 
-func NewClient(username, password string) *Client {
+func NewClient(username, password, serverURL string) *Client {
+	if serverURL == "" {
+		serverURL = defaultMlflowServer
+	}
 	return &Client{
 		httpClient: &http.Client{},
-		baseURL:    defaultMlflowServer,
+		baseURL:    serverURL,
 		username:   username,
 		password:   password,
 	}

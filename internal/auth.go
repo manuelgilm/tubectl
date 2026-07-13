@@ -17,7 +17,7 @@ type Options struct {
 	ClientSecret	string
 	Scopes			[]string
 	Username		string 	// for Mlflow basic auth
-	Password		string 	// for Mlflow basuc auth
+	Password		string 	// for Mlflow basic auth
 	ServerURL		string	// for Mlflow server
 }
 

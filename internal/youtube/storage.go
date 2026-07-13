@@ -12,7 +12,7 @@ func SaveToken(path string, token *Token) error {
 		return fmt.Errorf("Marshal token %w ", err)
 	}
 
-	err = os.WriteFile(path, data, 0666)
+	err = os.WriteFile(path, data, 0600)
 	if err != nil {
 		return fmt.Errorf("saving token: %w ", err)
 	}

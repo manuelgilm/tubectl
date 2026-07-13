@@ -76,10 +76,10 @@ func WriteRegistryFile(path string) error {
 	data, err := json.MarshalIndent(emptyRegistry, "", "  ")
 
 	if err != nil {
-		return fmt.Errorf("Error with Marshal: %v ", err)
+		return fmt.Errorf("Error with Marshal: %w ", err)
 	}
 
-	err = os.WriteFile(filepath.Join(path, "registry.json"), data, 0666)
+	err = os.WriteFile(filepath.Join(path, "registry.json"), data, 0644)
 
 	return err
 
@@ -90,6 +90,6 @@ func SaveRegistry(path string, reg *TubeRegistry) error {
 	if err != nil {
 		return fmt.Errorf("marshalling registry: %w", err)
 	}
-	return os.WriteFile(filepath.Join(path, "registry.json"), data, 0666)	
+	return os.WriteFile(filepath.Join(path, "registry.json"), data, 0644)	
 	
 }

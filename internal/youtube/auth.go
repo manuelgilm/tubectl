@@ -75,11 +75,13 @@ func (p *YouTubeProvider) Login(ctx context.Context, opts internal.Options) erro
 	select {
 	case code := <-codeCh:
 		token, err := config.Exchange(ctx, code)
+		srv.Shutdown(context.Background())
 		if err != nil {
 			return fmt.Errorf("token exchange: %w ", err)
 		}
 		return SaveToken(p.tokenPath, tokenFromOAuth2(token))
-	case <- ctx.Done():
+	case <-ctx.Done():
+		srv.Shutdown(context.Background())
 		return ctx.Err()
 	}
 
@@ -147,7 +149,7 @@ func tokenFromOAuth2(t *oauth2.Token) *Token {
 // RefreshToken attempts to refresh an expired OAuth token using the stored
 // refresh token. The YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET environment
 // variables must be set for the refresh to succeed.
-func RefreshToken(tokenPath string) (*Token, error) {
+func RefreshToken(ctx context.Context, tokenPath string) (*Token, error) {
 	clientID := os.Getenv("YOUTUBE_CLIENT_ID")
 	clientSecret := os.Getenv("YOUTUBE_CLIENT_SECRET")
 	if clientID == "" || clientSecret == "" {
@@ -165,7 +167,7 @@ func RefreshToken(tokenPath string) (*Token, error) {
 		Endpoint:     google.Endpoint,
 	}
 
-	ts := config.TokenSource(context.Background(), &oauth2.Token{
+	ts := config.TokenSource(ctx, &oauth2.Token{
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
 		TokenType:    token.TokenType,

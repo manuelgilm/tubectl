@@ -17,7 +17,7 @@ type Client struct {
 	http		*http.Client
 }
 
-//New clients creates an OpenAI client witht he given API key and model.
+// NewClient creates an OpenAI client with the given API key and model.
 // Model Defaults to "gpt-40-mini"
 func NewClient(apiKey string, model string) *Client {
 	if model =="" {
