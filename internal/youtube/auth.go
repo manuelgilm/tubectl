@@ -12,7 +12,6 @@ import (
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2"
 	"context"
-	"log"
 )
 const (
 	// ScopeYoutube manages a YouTube account (broadest scope).
@@ -44,7 +43,7 @@ func (p *YouTubeProvider) Login(ctx context.Context, opts internal.Options) erro
 	}
 	defer listener.Close()
 	// refreshing
-	if err := p.refreshToken(ctx, config); err == nil {
+	if _, err := RefreshToken(ctx, p.tokenPath); err == nil {
 		fmt.Println("Token refreshed successfully")
 		return nil
 	}
@@ -115,28 +114,6 @@ func (p *YouTubeProvider) Status() (internal.Status, error) {
 		ExpiresAt: token.ExpiresAt,
 	}, nil
 }
-// AUTH UTILITIES
-
-func (p *YouTubeProvider) refreshToken(ctx context.Context, config *oauth2.Config) error {
-	token, err := LoadToken(p.tokenPath)
-	if err != nil {
-		return err // no token to refresh, caller should do full login
-	}
-
-	ts := config.TokenSource(ctx, &oauth2.Token{
-		AccessToken: token.AccessToken,
-		RefreshToken: token.RefreshToken,
-		TokenType: token.TokenType,
-		Expiry: 	token.ExpiresAt,
-	})
-
-	newToken, err := ts.Token()
-	if err != nil {
-		return fmt.Errorf("refresh failed: %w ", err)
-	}
-	return SaveToken(p.tokenPath, tokenFromOAuth2(newToken))
-}
-
 func tokenFromOAuth2(t *oauth2.Token) *Token {
 	return &Token{
 		AccessToken: t.AccessToken,
@@ -184,7 +161,6 @@ func RefreshToken(ctx context.Context, tokenPath string) (*Token, error) {
 		return nil, fmt.Errorf("saving refreshed token: %w", err)
 	}
 
-	log.Println("OAuth token refreshed successfully")
 	return saved, nil
 }
 

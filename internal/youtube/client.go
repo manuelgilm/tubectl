@@ -144,16 +144,6 @@ func (c *Client) post(ctx context.Context, path string, params map[string]string
 }
 
 func (c *Client) PostComment(ctx context.Context, videoID string, text string) error {
-	var result CommentThread
-	type snippet struct	{
-		VideoID	string 	`json:"videoId"`
-		TopLevelComment	struct	{
-			Snippet	struct {
-				TextOriginal	string  `json:"textOriginal"`
-			} 	`json:"snippet"`
-		} 	`json:"topLevelComment"`
-	}
-
 	body := map[string]any{
 		"snippet": map[string]any{
 			"videoId": videoID,
@@ -166,7 +156,7 @@ func (c *Client) PostComment(ctx context.Context, videoID string, text string) e
 	}
 	err := c.post(ctx, "/commentThreads", map[string]string{
 			"part": "snippet",
-	}, body, &result)
+	}, body, nil)
 	if err != nil {
 		return fmt.Errorf("posting a comment %w ", err)
 	}
