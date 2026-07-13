@@ -9,6 +9,8 @@ CLI for YouTube management and AI-powered automations.
 | `OPENAI_API_KEY` | `tubectl ai` and `tubectl bot` commands |
 | `YOUTUBE_CLIENT_ID` | `tubectl auth youtube` (OAuth) |
 | `YOUTUBE_CLIENT_SECRET` | `tubectl auth youtube` (OAuth) |
+| `MLFLOW_USERNAME` | `tubectl auth mlflow` and `tubectl prompt` commands |
+| `MLFLOW_PASSWORD` | `tubectl auth mlflow` and `tubectl prompt` commands |
 
 ## Installation
 
@@ -60,7 +62,7 @@ tubectl bot answer-comment --video-id dQw4w9WgXcQ --comment-id Ug... --auto-appr
   registry.json     # Registered video metadata
   config.json       # CLI configuration
   transcripts/      # Cached transcripts by video ID
-  auth/             # OAuth tokens per service
+  auth/             # OAuth tokens and credentials per service
   prompts/          # YAML prompt templates (optional)
 ```
 
@@ -74,14 +76,18 @@ Creates the `~/.tubectl/` directory tree (registry, config, transcripts, auth, p
 
 ### `tubectl auth`
 
-OAuth authentication for YouTube.
+Authentication providers for YouTube and MLflow.
 
 ```
 tubectl auth youtube           # Authenticate interactively (if no valid token exists)
 tubectl auth youtube --force   # Force re-authentication even if a token is valid
+tubectl auth mlflow --username <user> --password <pass>
+tubectl auth mlflow --username <user> --password <pass> --force
 ```
 
-Opens a browser URL, listens for the OAuth callback on a local port, and saves the token to `~/.tubectl/auth/youtube.json`.
+**YouTube**: Opens a browser URL, listens for the OAuth callback on a local port, and saves the token to `~/.tubectl/auth/youtube.json`. Requires `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` environment variables.
+
+**MLflow**: Saves credentials to `~/.tubectl/auth/mlflow.json`. Can also use `MLFLOW_USERNAME` and `MLFLOW_PASSWORD` environment variables instead of flags.
 
 ### `tubectl registry`
 
@@ -163,6 +169,17 @@ vars:
 ```
 
 Use with `--prompt-file path/to/prompt.yaml`.
+
+### `tubectl prompt`
+
+Query prompts from the MLflow prompt registry.
+
+| Subcommand | Flags | Description |
+|---|---|---|
+| `list` | — | List all prompts from the MLflow registry (JSON) |
+| `get` | `--name` (required) | Get a specific prompt by name (JSON) |
+
+Requires authentication via `tubectl auth mlflow` or `MLFLOW_USERNAME`/`MLFLOW_PASSWORD` environment variables.
 
 ## Output Format
 
