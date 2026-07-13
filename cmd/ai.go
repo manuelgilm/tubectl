@@ -11,6 +11,9 @@ var query string
 var completeCmd = &cobra.Command{
 	Use:   "complete",
 	Short: "Use OpenAI completion AI",
+	Long: `Sends a prompt to the OpenAI API and prints the response.
+Requires --query. Optionally set --model to override the default
+(gpt-4o-mini). Requires OPENAI_API_KEY environment variable.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if query == "" {
 			return fmt.Errorf("--query is required")

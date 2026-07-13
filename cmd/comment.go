@@ -15,7 +15,9 @@ var text	string
 
 var replyToCommentCmd = &cobra.Command{
 	Use: "reply",
-	Short: "Reply a given comment using the Youtube Data API",
+	Short: "Reply to a given comment using the YouTube Data API",
+	Long: `Replies to an existing comment thread. Requires --comment-id
+(the parent comment ID) and --text (the reply content).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadClient()
 		if err != nil {
@@ -33,6 +35,7 @@ var replyToCommentCmd = &cobra.Command{
 
 var deleteCommentCmd = &cobra.Command{
 	Use: "delete",
+	Short: "Delete a comment",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadClient()
 		if err != nil {
@@ -49,6 +52,7 @@ var deleteCommentCmd = &cobra.Command{
 
 var getCommentCmd = &cobra.Command{
 	Use: "get",
+	Short: "Get a comment by ID",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadClient()
 		if err != nil {
@@ -67,16 +71,9 @@ var getCommentCmd = &cobra.Command{
 		return nil
 	},
 }
-// commentCmd represents the comment command
 var commentCmd = &cobra.Command{
 	Use:   "comment",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "YouTube comment operations",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("comment called")
 	},

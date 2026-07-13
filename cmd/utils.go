@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"gopkg.in/yaml.v3"
 	"tubectl/internal/youtube"
+	"tubectl/internal/prompt"
 	"tubectl/internal/ai"
 )
 
@@ -151,6 +152,25 @@ func loadOpenAIClient(model string) (*ai.Client, error) {
 		return nil, fmt.Errorf("OPENAI_API_KEY Not found in environment variables")
 	}
 	return ai.NewClient(apiKey, model), nil
+}
+
+func loadMlflowClient() (*prompt.Client, error) {
+	username := os.Getenv("MLFLOW_USERNAME")
+	password := os.Getenv("MLFLOW_PASSWORD")
+
+	if username != "" && password != "" {
+		return prompt.NewClient(username, password), nil
+	}
+
+	home, err := TubeCtlHome()
+	if err != nil {
+		return nil, err
+	}
+	creds, err := prompt.LoadCredentials(filepath.Join(home, "auth", "mlflow.json"))
+	if err != nil {
+		return nil, fmt.Errorf("MLflow credentials not found. Set MLFLOW_USERNAME/MLFLOW_PASSWORD env vars or run 'tubectl auth mlflow --username <user> --password <pass>'")
+	}
+	return prompt.NewClient(creds.Username, creds.Password), nil
 }
 
 func loadClient() (*youtube.Client, error) {

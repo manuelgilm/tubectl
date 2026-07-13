@@ -7,23 +7,14 @@ package cmd
 import (
 	"fmt"
 	"encoding/json"
-	"tubectl/internal/prompt"
 	"github.com/spf13/cobra"
-	"os"
 )
 
 var promptName string
 
-// promptCmd represents the prompt command
 var promptCmd = &cobra.Command{
 	Use:   "prompt",
 	Short: "Commands to communicate with the prompt registry",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("prompt called")
 	},
@@ -33,9 +24,10 @@ var listPromptsCmd = &cobra.Command{
 	Short:"List available prompts",
 	Long: `It retrieves a list of prompts from the registry`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		password := os.Getenv("MLFLOW_PASSWORD")
-		username := os.Getenv("MLFLOW_USERNAME")
-		client := prompt.NewClient(username, password)
+		client, err := loadMlflowClient()
+		if err != nil {
+			return err
+		}
 		registeredPrompts, err := client.ListPrompts(cmd.Context())
 		if err != nil {
 			return err
@@ -57,10 +49,10 @@ var getPromptCmd = &cobra.Command{
 	server
 	`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		password := os.Getenv("MLFLOW_PASSWORD")
-		username := os.Getenv("MLFLOW_USERNAME")
-		client := prompt.NewClient(username, password)
-
+		client, err := loadMlflowClient()
+		if err != nil {
+			return err
+		}
 		registeredPrompt, err := client.GetPrompt(cmd.Context(), promptName)
 		if err != nil {
 			return err

@@ -15,13 +15,11 @@ import (
 // initCmd represents the init command
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Starts .tubectl folder for cache metadata",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Initialize the ~/.tubectl directory structure",
+	Long: `Creates the ~/.tubectl directory and all required subdirectories
+and files: config.json, registry.json, auth/, transcripts/, prompts/.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Run this once before using other commands.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tubehome, err := TubeCtlHome()
 		if err != nil {
