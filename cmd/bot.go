@@ -1,15 +1,22 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"github.com/spf13/cobra"
 	"tubectl/internal/ai"
 )
 
-var autoApprove bool
-var onlyPrint bool
-var promptFile string
+var answerCommentArgs struct {
+	videoID    string
+	commentID  string
+	autoApprove bool
+	onlyPrint   bool
+	promptFile  string
+}
 
 // botCmd represents the bot command
 var botCmd = &cobra.Command{
@@ -27,23 +34,23 @@ By default the generated reply is shown and the user is prompted for
 confirmation before posting. Use --auto-approve to skip the prompt
 or --only-print to just display the reply without posting.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := loadClient()
+		client, err := loadClient(cmd.Context())
 		if err != nil {
 			return fmt.Errorf("loading youtube client: %w", err)
 		}
 
-		comment, err := client.GetComment(cmd.Context(), commentID)
+		comment, err := client.GetComment(cmd.Context(), answerCommentArgs.commentID)
 		if err != nil {
 			return fmt.Errorf("getting comment: %w", err)
 		}
 		commentText := comment.Snippet.TextDisplay
 
-		transcript, err := LoadCachedTranscript(videoID)
+		transcript, err := LoadCachedTranscript(answerCommentArgs.videoID)
 		if err != nil {
 			return fmt.Errorf("loading cached transcript: %w", err)
 		}
 		if transcript == nil {
-			t, err := client.DownloadTranscript(cmd.Context(), videoID, "")
+			t, err := client.DownloadTranscript(cmd.Context(), answerCommentArgs.videoID, "")
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: transcript not available: %v\n", err)
 			} else {
@@ -64,9 +71,9 @@ or --only-print to just display the reply without posting.`,
 			transcriptText = b.String()
 		}
 
-		var messages []ai.Message
-		if promptFile != "" {
-			pf, err := LoadPromptFile(promptFile)
+		var resolvedTemplate string
+		if answerCommentArgs.promptFile != "" {
+			pf, err := LoadPromptFile(answerCommentArgs.promptFile)
 			if err != nil {
 				return fmt.Errorf("loading prompt file: %w", err)
 			}
@@ -77,15 +84,16 @@ or --only-print to just display the reply without posting.`,
 			if err != nil {
 				return fmt.Errorf("rendering prompt: %w", err)
 			}
-			messages = []ai.Message{
-				{Role: "user", Content: rendered},
-			}
+			resolvedTemplate = rendered
 		} else {
-			var err error
-			messages, err = BuildMessagesYTBot(commentText, transcriptText)
+			resolvedTemplate, err = resolveBotPrompt(cmd.Context(), commentText, transcriptText)
 			if err != nil {
-				return fmt.Errorf("building messages: %w", err)
+				return fmt.Errorf("resolving prompt: %w", err)
 			}
+		}
+
+		messages := []ai.Message{
+			{Role: "system", Content: resolvedTemplate},
 		}
 
 		aiClient, err := loadOpenAIClient("")
@@ -97,14 +105,14 @@ or --only-print to just display the reply without posting.`,
 			return fmt.Errorf("AI completion failed: %w", err)
 		}
 
-		if onlyPrint {
+		if answerCommentArgs.onlyPrint {
 			fmt.Println(reply)
 			return nil
 		}
 
 		fmt.Fprintf(cmd.ErrOrStderr(), "Generated reply:\n---\n%s\n---\n", reply)
 
-		if !autoApprove {
+		if !answerCommentArgs.autoApprove {
 			fmt.Fprint(cmd.ErrOrStderr(), "Post this reply? [y/N]: ")
 			var confirm string
 			fmt.Scanln(&confirm)
@@ -114,7 +122,7 @@ or --only-print to just display the reply without posting.`,
 			}
 		}
 
-		posted, err := client.ReplyToComment(cmd.Context(), commentID, reply)
+		posted, err := client.ReplyToComment(cmd.Context(), answerCommentArgs.commentID, reply)
 		if err != nil {
 			return fmt.Errorf("posting reply: %w", err)
 		}
@@ -124,13 +132,96 @@ or --only-print to just display the reply without posting.`,
 	},
 }
 
+func resolveBotPrompt(ctx context.Context, commentText, transcriptText string) (string, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not load config: %v\n", err)
+		return tryLocalPrompt(Config{}, commentText, transcriptText)
+	}
+
+	modelName := cfg.BotPrompt.AnswerCommentModel
+	if modelName == "" {
+		return tryLocalPrompt(cfg, commentText, transcriptText)
+	}
+
+	mlflowClient, err := loadMlflowClient()
+	if err == nil {
+		registered, err := mlflowClient.GetPrompt(ctx, modelName)
+		if err == nil {
+			template := registered.PromptText()
+			if template != "" {
+				rendered := renderTemplate(template, commentText, transcriptText)
+				return rendered, nil
+			}
+		}
+	}
+
+	return tryLocalPrompt(cfg, commentText, transcriptText)
+}
+
+func tryLocalPrompt(cfg Config, commentText, transcriptText string) (string, error) {
+	home, err := TubeCtlHome()
+	if err != nil {
+		return defaultBotPromptText(commentText, transcriptText), nil
+	}
+
+	modelName := cfg.BotPrompt.AnswerCommentModel
+	if modelName == "" {
+		modelName = "yt-bot-answer-comment"
+	}
+
+	pf, err := LoadPromptFile(filepath.Join(home, "prompts", modelName+".yaml"))
+	if err != nil {
+		return defaultBotPromptText(commentText, transcriptText), nil
+	}
+
+	rendered, err := pf.Render(map[string]string{
+		"comment":    commentText,
+		"transcript": transcriptText,
+	})
+	if err != nil {
+		return defaultBotPromptText(commentText, transcriptText), nil
+	}
+
+	return rendered, nil
+}
+
+func renderTemplate(template, commentText, transcriptText string) string {
+	result := strings.ReplaceAll(template, "{comment}", commentText)
+	result = strings.ReplaceAll(result, "{transcript}", transcriptText)
+	return result
+}
+
+func defaultBotPromptText(commentText, transcriptText string) string {
+	return fmt.Sprintf(`
+You are Gilsama-Bot, an AI assistant that helps manage YouTube comments for a content creator. Your role is to write friendly and helpful replies to viewer comments.
+
+Guidelines:
+- Always start your reply with: [Automated Reply] Gilsama-Bot
+- Be warm, appreciative, and conversational
+- Reference specific points from the comment or video transcript
+- Keep replies concise (2-4 sentences)
+- Maintain a friendly and neutral tone regardless of the comment's tone
+- If the question cannot be answered from the video context, say: "Oh I don't have the answer for that question and it's not in the video context. Feel free to check other videos or resources!"
+- If the user input is off-topic, nonsensical, or hostile, respond politely by steering back to the video content
+
+Comment:
+%s
+
+Video transcript context:
+%s
+`, commentText, transcriptText)
+}
+
 func init() {
 	rootCmd.AddCommand(botCmd)
 	botCmd.AddCommand(answerCommentCmd)
 
-	answerCommentCmd.Flags().StringVar(&videoID, "video-id", "", "YouTube Video ID")
-	answerCommentCmd.Flags().StringVar(&commentID, "comment-id", "", "ID of the comment to answer")
-	answerCommentCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Skip confirmation prompt and post directly")
-	answerCommentCmd.Flags().BoolVar(&onlyPrint, "only-print", false, "Generate the reply but do not post it")
-	answerCommentCmd.Flags().StringVar(&promptFile, "prompt-file", "", "Path to a YAML prompt file (alternative to the default prompt)")
+	answerCommentCmd.Flags().StringVar(&answerCommentArgs.videoID, "video-id", "", "YouTube Video ID")
+	answerCommentCmd.MarkFlagRequired("video-id")
+	answerCommentCmd.Flags().StringVar(&answerCommentArgs.commentID, "comment-id", "", "ID of the comment to answer")
+	answerCommentCmd.MarkFlagRequired("comment-id")
+	answerCommentCmd.Flags().BoolVar(&answerCommentArgs.autoApprove, "auto-approve", false, "Skip confirmation prompt and post directly")
+	answerCommentCmd.Flags().BoolVar(&answerCommentArgs.onlyPrint, "only-print", false, "Generate the reply but do not post it")
+	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptFile, "prompt-file", "", "Path to a YAML prompt file (alternative to the default prompt)")
 }

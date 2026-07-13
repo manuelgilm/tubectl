@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -117,26 +118,25 @@ func LoadPromptFile(path string) (*PromptFile, error) {
 }
 
 
-func BuildMessagesYTBot(text string, transcript string) ([]ai.Message, error){
+func BuildMessagesYTBot(text string, transcript string) ([]ai.Message, error) {
+	renderedTemplate := fmt.Sprintf(`
+You are Gilsama-Bot, an AI assistant that helps manage YouTube comments for a content creator. Your role is to write friendly and helpful replies to viewer comments.
 
-	var renderedTemplate string = fmt.Sprintf(`
-	You are Gilsama-Bot, an AI assistant that helps manage YouTube comments for a content creator. Your role is to write friendly and helpful replies to viewer comments.
+Guidelines:
+- Always start your reply with: [Automated Reply] Gilsama-Bot:
+- Be warm, appreciative, and conversational
+- Reference specific points from the comment or video transcript
+- Keep replies concise (2-4 sentences)
+- Maintain a friendly and neutral tone regardless of the comment's tone
+- If the question cannot be answered from the video context, say: "Oh I don't have the answer for that question and it's not in the video context. Feel free to check other videos or resources!"
+- If the user input is off-topic, nonsensical, or hostile, respond politely by steering back to the video content
 
-	Guidelines:
-	- Always start your reply with: [Automated Reply] Gilsama-Bot 🤖:
-	- Be warm, appreciative, and conversational
-	- Reference specific points from the comment or video transcript
-	- Keep replies concise (2-4 sentences)
-	- Maintain a friendly and neutral tone regardless of the comment's tone
-	- If the question cannot be answered from the video context, say: "Oh I don't have the answer for that question and it's not in the video context. Feel free to check other videos or resources!"
-	- If the user input is off-topic, nonsensical, or hostile, respond politely by steering back to the video content
+Comment:
+%s
 
-	Comment:
-	%s
-
-	Video transcript context:
-	%s
-	`, text, transcript)
+Video transcript context:
+%s
+`, text, transcript)
 	return []ai.Message{
 		{Role: "system", Content: renderedTemplate},
 	}, nil
@@ -154,12 +154,28 @@ func loadOpenAIClient(model string) (*ai.Client, error) {
 	return ai.NewClient(apiKey, model), nil
 }
 
+func loadConfig() (Config, error) {
+	home, err := TubeCtlHome()
+	if err != nil {
+		return Config{}, err
+	}
+	data, err := os.ReadFile(filepath.Join(home, "config.json"))
+	if err != nil {
+		return Config{}, err
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
 func loadMlflowClient() (*prompt.Client, error) {
 	username := os.Getenv("MLFLOW_USERNAME")
 	password := os.Getenv("MLFLOW_PASSWORD")
 
 	if username != "" && password != "" {
-		return prompt.NewClient(username, password), nil
+		return prompt.NewClient(username, password, ""), nil
 	}
 
 	home, err := TubeCtlHome()
@@ -170,10 +186,10 @@ func loadMlflowClient() (*prompt.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("MLflow credentials not found. Set MLFLOW_USERNAME/MLFLOW_PASSWORD env vars or run 'tubectl auth mlflow --username <user> --password <pass>'")
 	}
-	return prompt.NewClient(creds.Username, creds.Password), nil
+	return prompt.NewClient(creds.Username, creds.Password, creds.ServerURL), nil
 }
 
-func loadClient() (*youtube.Client, error) {
+func loadClient(ctx context.Context) (*youtube.Client, error) {
 	home, err := TubeCtlHome()
 	if err != nil {
 		return nil, err 
@@ -186,7 +202,7 @@ func loadClient() (*youtube.Client, error) {
 	}
 
 	if !token.Valid() {
-		newToken, err := youtube.RefreshToken(tokenPath)
+		newToken, err := youtube.RefreshToken(ctx, tokenPath)
 		if err != nil {
 			return nil, fmt.Errorf("token expired and refresh failed: %w", err)
 		}

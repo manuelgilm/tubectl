@@ -1,7 +1,3 @@
-/*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-
-*/
 package cmd
 
 import (
@@ -10,7 +6,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var promptName string
+var getPromptArgs struct {
+	name string
+}
 
 var promptCmd = &cobra.Command{
 	Use:   "prompt",
@@ -53,7 +51,7 @@ var getPromptCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		registeredPrompt, err := client.GetPrompt(cmd.Context(), promptName)
+		registeredPrompt, err := client.GetPrompt(cmd.Context(), getPromptArgs.name)
 		if err != nil {
 			return err
 		}
@@ -71,16 +69,6 @@ func init() {
 	rootCmd.AddCommand(promptCmd)
 	promptCmd.AddCommand(getPromptCmd)
 	promptCmd.AddCommand(listPromptsCmd)
-	getPromptCmd.Flags().StringVar(&promptName, "name", "", "Prompt Name")
-
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// promptCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// promptCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	getPromptCmd.Flags().StringVar(&getPromptArgs.name, "name", "", "Prompt Name")
+	getPromptCmd.MarkFlagRequired("name")
 }

@@ -1,6 +1,3 @@
-/*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -14,11 +11,15 @@ import (
 )
 
 var (
-	forceLogin      bool
-	mlflowUsername  string
-	mlflowPassword  string
+	authYoutubeArgs struct {
+		forceLogin bool
+	}
+	authMlflowArgs struct {
+		forceLogin bool
+		username   string
+		password   string
+	}
 )
-
 var authYoutubeCmd = &cobra.Command{
 	Use: "youtube",
 	Short: "Authenticate with Youtube via OAuth 2.0",
@@ -35,7 +36,7 @@ variables. Use --force to re-authenticate.`,
 
 		tokenPath := filepath.Join(home, "auth", "youtube.json")
 		// check if a token already exists
-		if !forceLogin {
+		if !authYoutubeArgs.forceLogin {
 			if token, err := youtube.LoadToken(tokenPath); err == nil {
 				if token.Valid(){
 					fmt.Println("Already authenticated. Use `tubectl auth youtube --force` to re-authenticate.")
@@ -63,15 +64,15 @@ Use --force to overwrite existing credentials.`,
 		}
 		credsPath := filepath.Join(home, "auth", "mlflow.json")
 
-		if !forceLogin {
+		if !authMlflowArgs.forceLogin {
 			if _, err := prompt.LoadCredentials(credsPath); err == nil {
 				fmt.Println("Already authenticated. Use --force to re-authenticate.")
 				return nil
 			}
 		}
 
-		username := mlflowUsername
-		password := mlflowPassword
+		username := authMlflowArgs.username
+		password := authMlflowArgs.password
 		if username == "" {
 			username = os.Getenv("MLFLOW_USERNAME")
 		}
@@ -99,9 +100,9 @@ var authCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(authCmd)
 	authCmd.AddCommand(authYoutubeCmd)
-	authYoutubeCmd.Flags().BoolVar(&forceLogin, "force", false, "Force re-authentication even if a valid token exists")
+	authYoutubeCmd.Flags().BoolVar(&authYoutubeArgs.forceLogin, "force", false, "Force re-authentication even if a valid token exists")
 	authCmd.AddCommand(authMlflowCmd)
-	authMlflowCmd.Flags().StringVar(&mlflowUsername, "username", "", "MLflow username")
-	authMlflowCmd.Flags().StringVar(&mlflowPassword, "password", "", "MLflow password")
-	authMlflowCmd.Flags().BoolVar(&forceLogin, "force", false, "Force re-authentication even if credentials exist")
+	authMlflowCmd.Flags().StringVar(&authMlflowArgs.username, "username", "", "MLflow username")
+	authMlflowCmd.Flags().StringVar(&authMlflowArgs.password, "password", "", "MLflow password")
+	authMlflowCmd.Flags().BoolVar(&authMlflowArgs.forceLogin, "force", false, "Force re-authentication even if credentials exist")
 }
