@@ -125,7 +125,7 @@ var getVideoCmd = &cobra.Command{
 		}
 		data, err := json.MarshalIndent(video, "", "  ")
 		if err != nil {
-			return fmt.Errorf("Marshall video %v ", err)
+			return fmt.Errorf("Marshall video %w ", err)
 		}
 		fmt.Println(string(data))
 		return nil
