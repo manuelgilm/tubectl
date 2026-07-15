@@ -48,16 +48,7 @@ func (c *Client) get(ctx context.Context, path string, params map[string]string,
     defer resp.Body.Close()
 
     if resp.StatusCode != http.StatusOK {
-        var apiErr struct {
-            Error struct {
-                Message string `json:"message"`
-                Code    int    `json:"code"`
-            } `json:"error"`
-        }
-        if decodeErr := json.NewDecoder(resp.Body).Decode(&apiErr); decodeErr != nil {
-            return fmt.Errorf("youtube api error (status %d, could not parse body: %w)", resp.StatusCode, decodeErr)
-        }
-        return fmt.Errorf("youtube api error %d: %s", apiErr.Error.Code, apiErr.Error.Message)
+        return youtubeAPIError(resp)
     }
 
     return json.NewDecoder(resp.Body).Decode(out)
@@ -83,16 +74,7 @@ func (c *Client) delete(ctx context.Context, path string, params map[string]stri
     defer resp.Body.Close()
 
     if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-        var apiErr struct {
-            Error struct {
-                Message string `json:"message"`
-                Code    int    `json:"code"`
-            } `json:"error"`
-        }
-        if decodeErr := json.NewDecoder(resp.Body).Decode(&apiErr); decodeErr != nil {
-            return fmt.Errorf("youtube api error (status %d, could not parse body: %w)", resp.StatusCode, decodeErr)
-        }
-        return fmt.Errorf("youtube api error %d: %s", apiErr.Error.Code, apiErr.Error.Message)
+        return youtubeAPIError(resp)
     }
 
     return nil
@@ -125,16 +107,7 @@ func (c *Client) post(ctx context.Context, path string, params map[string]string
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var apiErr struct {
-			Error struct {
-				Message string `json:"message"`
-				Code    int    `json:"code"`
-			} `json:"error"`
-		}
-		if decodeErr := json.NewDecoder(resp.Body).Decode(&apiErr); decodeErr != nil {
-			return fmt.Errorf("youtube api error (status %d, could not parse body: %w)", resp.StatusCode, decodeErr)
-		}
-		return fmt.Errorf("youtube api error %d: %s", apiErr.Error.Code, apiErr.Error.Message)
+		return youtubeAPIError(resp)
 	}
 
 	if out != nil {
@@ -158,7 +131,7 @@ func (c *Client) PostComment(ctx context.Context, videoID string, text string) e
 			"part": "snippet",
 	}, body, nil)
 	if err != nil {
-		return fmt.Errorf("posting a comment %w ", err)
+		return fmt.Errorf("posting a comment: %w", err)
 	}
 	return nil
 }
@@ -252,7 +225,7 @@ func (c *Client) DownloadTranscript(ctx context.Context, videoID, language strin
 	raw, err := c.downloadCaption(ctx, track.ID)
 	if err != nil {
 		// Fall back to the public timedtext endpoint for videos we don't own.
-		return downloadPublicTranscript(ctx, videoID, track.Snippet.Language)
+		return c.downloadPublicTranscript(ctx, videoID, track.Snippet.Language)
 	}
 
 	lines, err := parseSRT(raw)
@@ -282,7 +255,7 @@ func (c *Client) GetVideo(ctx context.Context, videoID string) (*Video, error) {
 		return nil, err
 	}
 	if len(result.Items) == 0 {
-		return nil, fmt.Errorf("Video %s not found", videoID)
+		return nil, fmt.Errorf("video %s not found", videoID)
 	}
 
 	return &result.Items[0], nil
@@ -328,14 +301,14 @@ func (c *Client) downloadCaption(ctx context.Context, captionID string) ([]byte,
 //  Functions 
 // downloadPublicTranscript uses YouTube's undocumented timedtext endpoint to
 // fetch captions for public videos without requiring ownership.
-func downloadPublicTranscript(ctx context.Context, videoID, language string) (*Transcript, error) {
+func (c *Client) downloadPublicTranscript(ctx context.Context, videoID, language string) (*Transcript, error) {
 	url := "https://www.youtube.com/api/timedtext?fmt=srv1&lang=" + language + "&v=" + videoID
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building timedtext request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("timedtext request failed: %w", err)
 	}
@@ -360,6 +333,20 @@ func downloadPublicTranscript(ctx context.Context, videoID, language string) (*T
 		TrackKind: "public",
 		Lines:     lines,
 	}, nil
+}
+
+// youtubeAPIError parses a YouTube API error response into a Go error.
+func youtubeAPIError(resp *http.Response) error {
+	var apiErr struct {
+		Error struct {
+			Message string `json:"message"`
+			Code    int    `json:"code"`
+		} `json:"error"`
+	}
+	if decodeErr := json.NewDecoder(resp.Body).Decode(&apiErr); decodeErr != nil {
+		return fmt.Errorf("youtube api error (status %d, could not parse body: %w)", resp.StatusCode, decodeErr)
+	}
+	return fmt.Errorf("youtube api error %d: %s", apiErr.Error.Code, apiErr.Error.Message)
 }
 
 // selectTrack picks the best caption track: manual > asr, filtered by language.
