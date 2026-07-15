@@ -9,12 +9,12 @@ import (
 func SaveToken(path string, token *Token) error {
 	data, err := json.Marshal(token)
 	if err != nil {
-		return fmt.Errorf("Marshal token %w ", err)
+		return fmt.Errorf("marshal token: %w", err)
 	}
 
 	err = os.WriteFile(path, data, 0600)
 	if err != nil {
-		return fmt.Errorf("saving token: %w ", err)
+		return fmt.Errorf("saving token: %w", err)
 	}
 	return nil
 }
