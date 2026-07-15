@@ -1,17 +1,21 @@
 package youtube
 
 import (
-	"tubectl/internal"
-	"os"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
-	"encoding/json"
 	"net"
 	"net/http"
-	"golang.org/x/oauth2/google"
+	"os"
+	"time"
+
 	"golang.org/x/oauth2"
-	"context"
+	"golang.org/x/oauth2/google"
+
+	"tubectl/internal"
 )
 const (
 	// ScopeYoutube manages a YouTube account (broadest scope).
@@ -42,20 +46,25 @@ func (p *YouTubeProvider) Login(ctx context.Context, opts internal.Options) erro
 		return err
 	}
 	defer listener.Close()
-	// refreshing
-	if _, err := RefreshToken(ctx, p.tokenPath); err == nil {
-		fmt.Println("Token refreshed successfully")
-		return nil
-	}
 	// no valid token - do full OAuth flow
 	p.config = config // To use later
 
 	//Channel to receive the auth code from the http handler
 	codeCh := make(chan string)
 
+	stateBytes := make([]byte, 16)
+	if _, err := rand.Read(stateBytes); err != nil {
+		return fmt.Errorf("generating state: %w", err)
+	}
+	state := hex.EncodeToString(stateBytes)
+
 	// Reads ?code= from query
 	mux := http.NewServeMux()
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("state") != state {
+			http.Error(w, "state mismatch", http.StatusForbidden)
+			return
+		}
 		code := r.URL.Query().Get("code")
 		if code == "" {
 			http.Error(w, "code not found!", http.StatusBadRequest)
@@ -68,19 +77,19 @@ func (p *YouTubeProvider) Login(ctx context.Context, opts internal.Options) erro
 	srv := &http.Server{Handler:mux}
 	go srv.Serve(listener)
 
-	authURL := config.AuthCodeURL("state")
+	authURL := config.AuthCodeURL(state)
 	fmt.Println("Open this URL in your browser:", authURL)
 
 	select {
 	case code := <-codeCh:
 		token, err := config.Exchange(ctx, code)
-		srv.Shutdown(context.Background())
+		srv.Shutdown(ctx)
 		if err != nil {
-			return fmt.Errorf("token exchange: %w ", err)
+			return fmt.Errorf("token exchange: %w", err)
 		}
 		return SaveToken(p.tokenPath, tokenFromOAuth2(token))
 	case <-ctx.Done():
-		srv.Shutdown(context.Background())
+		srv.Shutdown(ctx)
 		return ctx.Err()
 	}
 
@@ -106,7 +115,7 @@ func (p *YouTubeProvider) Status() (internal.Status, error) {
 	//read token
 	token, err := LoadToken(p.tokenPath)
 	if err != nil{
-		return internal.Status{}, fmt.Errorf("Loading token: %w ", err)
+		return internal.Status{}, fmt.Errorf("loading token: %w", err)
 	}
 
 	return internal.Status{
@@ -175,7 +184,7 @@ func youtubeConfigFromEnv() (*oauth2.Config, net.Listener, error) {
 	//pick random port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to pick port: %w ", err)
+		return nil, nil, fmt.Errorf("failed to pick port: %w", err)
 	}
 
 	port := listener.Addr().(*net.TCPAddr).Port
@@ -192,7 +201,7 @@ func youtubeConfigFromEnv() (*oauth2.Config, net.Listener, error) {
 func LoadToken(path string) (*Token, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("Reading Token File: %w", err)
+		return nil, fmt.Errorf("reading token file: %w", err)
 	}
 	var token Token 
 	err = json.Unmarshal(data, &token)
