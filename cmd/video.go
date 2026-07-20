@@ -1,9 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/spf13/cobra"
-	"encoding/json"
+	"tubectl/internal/youtube"
 )
 var (
 	getVideoArgs struct {
@@ -32,11 +33,11 @@ Requires --video-id and --text.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadClient(cmd.Context())
 		if err != nil {
-			return fmt.Errorf("loading client %w ",err)
+			return fmt.Errorf("loading client: %w", err)
 		}
 		err = client.PostComment(cmd.Context(), postCommentArgs.videoID, postCommentArgs.text)
 		if err != nil {
-			return fmt.Errorf("posting a comment %w ", err)
+			return fmt.Errorf("posting a comment: %w", err)
 		}
 		fmt.Println("Comment Posted!")
 		return nil
@@ -52,7 +53,7 @@ Use --language to select a specific language (default: en).
 Use --no-cache to bypass the cache and fetch fresh data.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !getTranscriptArgs.noCache {
-			cached, err := LoadCachedTranscript(getTranscriptArgs.videoID)
+			cached, err := youtube.LoadCachedTranscript(getTranscriptArgs.videoID)
 			if err != nil {
 				return err 
 			}
@@ -73,11 +74,11 @@ Use --no-cache to bypass the cache and fetch fresh data.`,
 			return err
 		}
 
-		if err := SaveCachedTranscript(transcript); err != nil {
+		if err := youtube.SaveCachedTranscript(transcript); err != nil {
 			// Non-fatal: warn but still print the transcript.
 			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not cache transcript: %v\n", err)
 		} else {
-			path, _ := TranscriptCachePath(getTranscriptArgs.videoID)
+			path, _ := youtube.TranscriptCachePath(getTranscriptArgs.videoID)
 			fmt.Fprintf(cmd.ErrOrStderr(), "Transcript cached to %s\n\n", path)
 		}
 
@@ -98,12 +99,12 @@ var getCommentsCmd = &cobra.Command{
 
 		commentThread, err := client.GetComments(cmd.Context(), getCommentsArgs.videoID, getCommentsArgs.maxResults, getCommentsArgs.order)
 		if err != nil {
-			return fmt.Errorf("Retrieving comments: %w ", err)
+			return fmt.Errorf("retrieving comments: %w", err)
 		}
 
 		data, err := json.MarshalIndent(commentThread, "", "  ")
 		if err != nil {
-			return fmt.Errorf("Marshall video %w ", err)
+			return fmt.Errorf("marshaling comments: %w", err)
 		}
 
 		fmt.Println(string(data))
@@ -121,11 +122,11 @@ var getVideoCmd = &cobra.Command{
 		}
 		video, err := client.GetVideo(cmd.Context(), getVideoArgs.videoID)
 		if err != nil {
-			return fmt.Errorf("Retrieving video: %w ", err)
+			return fmt.Errorf("retrieving video: %w", err)
 		}
 		data, err := json.MarshalIndent(video, "", "  ")
 		if err != nil {
-			return fmt.Errorf("Marshall video %w ", err)
+			return fmt.Errorf("marshaling video: %w", err)
 		}
 		fmt.Println(string(data))
 		return nil

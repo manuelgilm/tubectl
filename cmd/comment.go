@@ -26,13 +26,13 @@ var replyToCommentCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadClient(cmd.Context())
 		if err != nil {
-			return fmt.Errorf("loading client %w ", err)
+			return fmt.Errorf("loading client: %w", err)
 		}
 		comment, err := client.ReplyToComment(cmd.Context(), replyToCommentArgs.commentID, replyToCommentArgs.text)
 		if err != nil {
 			return fmt.Errorf("replying to comment %s : %w", replyToCommentArgs.commentID, err)
 		}
-		fmt.Printf("comment: %s posted \n", comment.Snippet.TextDisplay)
+		fmt.Printf("comment: %s posted\n", comment.Snippet.TextDisplay)
 
 		return nil
 	},
@@ -44,13 +44,13 @@ var deleteCommentCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadClient(cmd.Context())
 		if err != nil {
-			return fmt.Errorf("loading client %w ", err)
+			return fmt.Errorf("loading client: %w", err)
 		}
 		err = client.DeleteComment(cmd.Context(), deleteCommentArgs.commentID)
 		if err != nil {
-			return fmt.Errorf("deleting comment %s : %w ", deleteCommentArgs.commentID, err)
+			return fmt.Errorf("deleting comment %s: %w", deleteCommentArgs.commentID, err)
 		}
-		fmt.Printf("comment %s deleted! \n ", deleteCommentArgs.commentID)
+		fmt.Printf("comment %s deleted!\n", deleteCommentArgs.commentID)
 		return nil
 	},
 }
@@ -61,16 +61,16 @@ var getCommentCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadClient(cmd.Context())
 		if err != nil {
-			return fmt.Errorf("loading client: %w ", err)
+return fmt.Errorf("loading client: %w", err)
 		}
 		comment, err := client.GetComment(cmd.Context(), getCommentArgs.commentID)
 		if err != nil {
-			return fmt.Errorf("getting comment %s : %w ", getCommentArgs.commentID, err)
+			return fmt.Errorf("getting comment %s: %w", getCommentArgs.commentID, err)
 		}
-		
-		data, err := json.MarshalIndent(comment.Snippet.TextDisplay, "", "  ")
+
+		data, err := json.MarshalIndent(comment, "", "  ")
 		if err != nil {
-			return fmt.Errorf("marshaling comment %w ", err)
+			return fmt.Errorf("marshaling comment: %w", err)
 		}
 		fmt.Println(string(data))
 		return nil

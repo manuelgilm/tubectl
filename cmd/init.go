@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"tubectl/internal/registry"
+	"tubectl/internal/prompt"
 	"gopkg.in/yaml.v3"
 	"github.com/spf13/cobra"
 )
@@ -22,39 +23,39 @@ Run this once before using other commands.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tubehome, err := TubeCtlHome()
 		if err != nil {
-			return fmt.Errorf("Error defining tubectl home: %w ", err)
+			return fmt.Errorf("error defining tubectl home: %w", err)
 		}
 
 		err = createFolder(tubehome)
 		if err != nil {
-			return fmt.Errorf("Error creating folder: %w ", err)
+			return fmt.Errorf("error creating folder: %w", err)
 		}
 
 		// writing the files registry.json and config.json
 		err = writeConfigFile(tubehome)
 		if err != nil {
-			return fmt.Errorf("Error creating config file %w ", err)
+			return fmt.Errorf("error creating config file %w", err)
 		}
 
 		err = registry.WriteRegistryFile(tubehome)
 		if err != nil {
-			return fmt.Errorf("Error creating registry file %w ", err)
+			return fmt.Errorf("error creating registry file %w", err)
 		}
 		// writing the emergency prompt
 		err = writeEmergencyPrompt(tubehome)
 		if err != nil {
-			return fmt.Errorf("writing emergency prompt: %w ", err)
+			return fmt.Errorf("writing emergency prompt: %w", err)
 		}
 
 		// Creating additional folders
 		err = createFolder(filepath.Join(tubehome, "transcripts"))
 		if err != nil {
-			return fmt.Errorf("Error creating folder: %w ", err)
+			return fmt.Errorf("error creating folder: %w", err)
 		}
 
 		err = createFolder(filepath.Join(tubehome, "auth"))
 		if err != nil {
-			return fmt.Errorf("Error creating folder: %w ", err)
+			return fmt.Errorf("error creating folder: %w", err)
 		}
 
 		return nil
@@ -88,7 +89,7 @@ func createFolder(path string) error {
 
 	err := os.MkdirAll(path, 0755)
 	if err != nil {
-		return fmt.Errorf("Error creating new directory: %w ", err)
+		return fmt.Errorf("error creating new directory: %w", err)
 	}
 
 	return nil
@@ -102,7 +103,7 @@ func writeConfigFile(path string) error {
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return fmt.Errorf("Error with Marshal: %w ", err)
+		return fmt.Errorf("error with Marshal: %w", err)
 	}
 
 	return os.WriteFile(filepath.Join(path, "config.json"), data, 0644)
@@ -114,7 +115,7 @@ func writeEmergencyPrompt(path string) error {
 		return err
 	}
 
-	p := PromptFile{
+	p := prompt.PromptFile{
 		Template: fmt.Sprintf(`You are Gilsama-Bot, an AI assistant that helps manage YouTube comments for a content creator. Your role is to write friendly and helpful replies to viewer comments.
 
 Guidelines:

@@ -15,6 +15,8 @@ GitHub Actions bot to automatically reply to new comments.
 | `YOUTUBE_CLIENT_SECRET` | `tubectl auth youtube` (OAuth) |
 | `MLFLOW_USERNAME` | `tubectl auth mlflow` and `tubectl prompt` commands |
 | `MLFLOW_PASSWORD` | `tubectl auth mlflow` and `tubectl prompt` commands |
+| `MLFLOW_SERVER_URL` | `tubectl auth mlflow`, `tubectl prompt`, and MLflow tracing (default `https://sandbox-mlflow.gilmanuel.com`) |
+| `MLFLOW_TRACING_ENABLED` | MLflow tracing — set to `true` to enable (`ai` / `bot` commands) |
 
 ## Installation
 
@@ -107,7 +109,7 @@ Local metadata cache for videos you want to monitor.
 | `delete` | `--video-id` (required) | Remove a video from the registry |
 | `update` | `--video-id` (required), `--title` | Update a video's title |
 
-Registering the same video twice returns a warning. Deleting a non-existent video returns an error.
+Registering the same video twice returns an error. Deleting a non-existent video returns an error.
 
 ### `tubectl video`
 
@@ -187,6 +189,38 @@ Query prompts from the MLflow prompt registry.
 | `get` | `--name` (required) | Get a specific prompt by name (JSON) |
 
 Requires authentication via `tubectl auth mlflow` or `MLFLOW_USERNAME`/`MLFLOW_PASSWORD` environment variables.
+
+### MLflow Tracing
+
+`tubectl` can trace OpenAI API calls to an MLflow server using the
+OpenTelemetry protocol (protobuf). Each `ai complete` or `bot answer-comment`
+invocation creates a trace with:
+
+- Model name, prompt messages, and response
+- Token usage (prompt, completion, total)
+- Latency and finish reason
+- Error information on failure
+
+Enable it with `MLFLOW_TRACING_ENABLED=true` and configure MLflow credentials
+(shared with `tubectl prompt` and `tubectl auth mlflow`):
+
+```bash
+export MLFLOW_TRACING_ENABLED=true
+export MLFLOW_SERVER_URL=http://localhost:5000   # optional, defaults to https://sandbox-mlflow.gilmanuel.com
+
+# Using environment variables:
+export MLFLOW_USERNAME=admin
+export MLFLOW_PASSWORD=secret
+tubectl ai complete --query "Hello"
+
+# Or using saved credentials:
+tubectl auth mlflow --username admin --password secret
+tubectl ai complete --query "Hello"
+```
+
+Traces appear in the MLflow UI under experiment `0`. No tracing occurs when
+`MLFLOW_TRACING_ENABLED` is unset or not `"true"`. Trace failures (network,
+server errors) are logged to stderr and never block the command.
 
 ## Output Format
 
@@ -304,6 +338,10 @@ Not all YouTube videos have captions enabled. `tubectl` attempts the OAuth-authe
 ### Caption download returns empty body
 
 The caption download endpoint requires the video to be owned by or accessible to the authenticated account. For videos you don't own, `tubectl` falls back to the public timedtext endpoint, which works for most public videos.
+
+### Traces not appearing in MLflow
+
+Check that `MLFLOW_TRACING_ENABLED=true` is set. If it is, verify the MLflow server URL with `MLFLOW_SERVER_URL` — the default of `https://sandbox-mlflow.gilmanuel.com` is a remote server. Tracing uses the same credentials as `tubectl prompt` (env vars or `tubectl auth mlflow`).
 
 ## License
 

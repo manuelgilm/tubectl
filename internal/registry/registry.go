@@ -22,13 +22,13 @@ type RegisteredVideo struct {
 func LoadRegistry(path string) (*TubeRegistry, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading registry file: %w ", err)
+		return nil, fmt.Errorf("reading registry file: %w", err)
 	}
 
 	var registry TubeRegistry
 	err = json.Unmarshal(data, &registry)
 	if err != nil {
-		return nil, fmt.Errorf("unmarshalling registry: %w ", err)
+		return nil, fmt.Errorf("unmarshalling registry: %w", err)
 	}
 	return &registry, nil
 }
@@ -76,7 +76,7 @@ func WriteRegistryFile(path string) error {
 	data, err := json.MarshalIndent(emptyRegistry, "", "  ")
 
 	if err != nil {
-		return fmt.Errorf("Error with Marshal: %w ", err)
+		return fmt.Errorf("marshaling registry: %w", err)
 	}
 
 	err = os.WriteFile(filepath.Join(path, "registry.json"), data, 0644)

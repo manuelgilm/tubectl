@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"tubectl/internal/prompt"
 )
 
 var completeArgs struct {
@@ -21,12 +22,12 @@ Requires --query. Optionally set --model to override the default
 			return fmt.Errorf("--query is required")
 		}
 
-		openaiClient, err := loadOpenAIClient(completeArgs.model)
+		openaiClient, err := loadOpenAIClient(cmd.Context(), completeArgs.model)
 		if err != nil {
 			return fmt.Errorf("loading openai client: %w", err)
 		}
 
-		messages, err := BuildMessagesYTBot(completeArgs.query, "Video without context")
+		messages, err := prompt.BuildMessagesYTBot(completeArgs.query, "Video without context")
 		if err != nil {
 			return fmt.Errorf("building messages: %w", err)
 		}

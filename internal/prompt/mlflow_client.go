@@ -7,9 +7,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
-const defaultMlflowServer = "https://sandbox-mlflow.gilmanuel.com"
+const DefaultMlflowServer = "https://sandbox-mlflow.gilmanuel.com"
 
 type Client struct {
 	httpClient *http.Client
@@ -20,7 +21,7 @@ type Client struct {
 
 func NewClient(username, password, serverURL string) *Client {
 	if serverURL == "" {
-		serverURL = defaultMlflowServer
+		serverURL = DefaultMlflowServer
 	}
 	return &Client{
 		httpClient: &http.Client{},
@@ -31,7 +32,10 @@ func NewClient(username, password, serverURL string) *Client {
 }
 
 func (c *Client) get(ctx context.Context, path string, params url.Values, out any) error {
-	u, _ := url.JoinPath(c.baseURL, path)
+	u, err := url.JoinPath(c.baseURL, path)
+	if err != nil {
+		return fmt.Errorf("building URL: %w", err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return fmt.Errorf("building request: %w", err)
@@ -46,7 +50,8 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("MLflow API error (status %d)", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("MLflow API error (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	if out != nil {

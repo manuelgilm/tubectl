@@ -3,11 +3,13 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
+	"io"
 	"path/filepath"
 	"strings"
 	"github.com/spf13/cobra"
 	"tubectl/internal/ai"
+	"tubectl/internal/prompt"
+	"tubectl/internal/youtube"
 )
 
 var answerCommentArgs struct {
@@ -45,7 +47,7 @@ or --only-print to just display the reply without posting.`,
 		}
 		commentText := comment.Snippet.TextDisplay
 
-		transcript, err := LoadCachedTranscript(answerCommentArgs.videoID)
+		transcript, err := youtube.LoadCachedTranscript(answerCommentArgs.videoID)
 		if err != nil {
 			return fmt.Errorf("loading cached transcript: %w", err)
 		}
@@ -55,7 +57,7 @@ or --only-print to just display the reply without posting.`,
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: transcript not available: %v\n", err)
 			} else {
 				transcript = t
-				if saveErr := SaveCachedTranscript(transcript); saveErr != nil {
+				if saveErr := youtube.SaveCachedTranscript(transcript); saveErr != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not cache transcript: %v\n", saveErr)
 				}
 			}
@@ -73,7 +75,7 @@ or --only-print to just display the reply without posting.`,
 
 		var resolvedTemplate string
 		if answerCommentArgs.promptFile != "" {
-			pf, err := LoadPromptFile(answerCommentArgs.promptFile)
+			pf, err := prompt.LoadPromptFile(answerCommentArgs.promptFile)
 			if err != nil {
 				return fmt.Errorf("loading prompt file: %w", err)
 			}
@@ -86,7 +88,7 @@ or --only-print to just display the reply without posting.`,
 			}
 			resolvedTemplate = rendered
 		} else {
-			resolvedTemplate, err = resolveBotPrompt(cmd.Context(), commentText, transcriptText)
+			resolvedTemplate, err = resolveBotPrompt(cmd.Context(), cmd.ErrOrStderr(), commentText, transcriptText)
 			if err != nil {
 				return fmt.Errorf("resolving prompt: %w", err)
 			}
@@ -96,7 +98,7 @@ or --only-print to just display the reply without posting.`,
 			{Role: "system", Content: resolvedTemplate},
 		}
 
-		aiClient, err := loadOpenAIClient("")
+		aiClient, err := loadOpenAIClient(cmd.Context(), "")
 		if err != nil {
 			return fmt.Errorf("loading AI client: %w", err)
 		}
@@ -115,7 +117,9 @@ or --only-print to just display the reply without posting.`,
 		if !answerCommentArgs.autoApprove {
 			fmt.Fprint(cmd.ErrOrStderr(), "Post this reply? [y/N]: ")
 			var confirm string
-			fmt.Scanln(&confirm)
+			if _, err := fmt.Scanln(&confirm); err != nil {
+				return fmt.Errorf("reading confirmation (use --auto-approve in non-interactive mode): %w", err)
+			}
 			if confirm != "y" && confirm != "Y" {
 				fmt.Println("Reply cancelled.")
 				return nil
@@ -132,10 +136,10 @@ or --only-print to just display the reply without posting.`,
 	},
 }
 
-func resolveBotPrompt(ctx context.Context, commentText, transcriptText string) (string, error) {
+func resolveBotPrompt(ctx context.Context, w io.Writer, commentText, transcriptText string) (string, error) {
 	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not load config: %v\n", err)
+		fmt.Fprintf(w, "Warning: could not load config: %v\n", err)
 		return tryLocalPrompt(Config{}, commentText, transcriptText)
 	}
 
@@ -162,7 +166,7 @@ func resolveBotPrompt(ctx context.Context, commentText, transcriptText string) (
 func tryLocalPrompt(cfg Config, commentText, transcriptText string) (string, error) {
 	home, err := TubeCtlHome()
 	if err != nil {
-		return defaultBotPromptText(commentText, transcriptText), nil
+		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 
 	modelName := cfg.BotPrompt.AnswerCommentModel
@@ -170,9 +174,9 @@ func tryLocalPrompt(cfg Config, commentText, transcriptText string) (string, err
 		modelName = "yt-bot-answer-comment"
 	}
 
-	pf, err := LoadPromptFile(filepath.Join(home, "prompts", modelName+".yaml"))
+	pf, err := prompt.LoadPromptFile(filepath.Join(home, "prompts", modelName+".yaml"))
 	if err != nil {
-		return defaultBotPromptText(commentText, transcriptText), nil
+		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 
 	rendered, err := pf.Render(map[string]string{
@@ -180,7 +184,7 @@ func tryLocalPrompt(cfg Config, commentText, transcriptText string) (string, err
 		"transcript": transcriptText,
 	})
 	if err != nil {
-		return defaultBotPromptText(commentText, transcriptText), nil
+		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 
 	return rendered, nil
@@ -192,26 +196,6 @@ func renderTemplate(template, commentText, transcriptText string) string {
 	return result
 }
 
-func defaultBotPromptText(commentText, transcriptText string) string {
-	return fmt.Sprintf(`
-You are Gilsama-Bot, an AI assistant that helps manage YouTube comments for a content creator. Your role is to write friendly and helpful replies to viewer comments.
-
-Guidelines:
-- Always start your reply with: [Automated Reply] Gilsama-Bot
-- Be warm, appreciative, and conversational
-- Reference specific points from the comment or video transcript
-- Keep replies concise (2-4 sentences)
-- Maintain a friendly and neutral tone regardless of the comment's tone
-- If the question cannot be answered from the video context, say: "Oh I don't have the answer for that question and it's not in the video context. Feel free to check other videos or resources!"
-- If the user input is off-topic, nonsensical, or hostile, respond politely by steering back to the video content
-
-Comment:
-%s
-
-Video transcript context:
-%s
-`, commentText, transcriptText)
-}
 
 func init() {
 	rootCmd.AddCommand(botCmd)

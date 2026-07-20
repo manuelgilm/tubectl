@@ -34,7 +34,7 @@ var registryUpdateCmd = &cobra.Command{
 			return err
 		}
 		if !registry.UpdateVideo(reg, regUpdateArgs.videoID, regUpdateArgs.title){
-			return fmt.Errorf("Video %s not found", regUpdateArgs.videoID)
+			return fmt.Errorf("video %s not found", regUpdateArgs.videoID)
 		}
 		return registry.SaveRegistry(home, reg)
 	},
@@ -120,4 +120,5 @@ func init() {
 	registryUpdateCmd.Flags().StringVar(&regUpdateArgs.videoID, "video-id", "", "YouTube Video ID")
 	registryUpdateCmd.MarkFlagRequired("video-id")
 	registryUpdateCmd.Flags().StringVar(&regUpdateArgs.title, "title", "", "YouTube Video Title")
+	registryUpdateCmd.MarkFlagRequired("title")
 }
