@@ -1,30 +1,43 @@
-/*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-
-*/
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/spf13/cobra"
-	"encoding/json"
+	"tubectl/internal/youtube"
 )
-var maxResults int
-var order string
-var noCache bool
-var languageFlag string
-
+var (
+	getVideoArgs struct {
+		videoID string
+	}
+	getCommentsArgs struct {
+		videoID    string
+		maxResults int
+		order      string
+	}
+	getTranscriptArgs struct {
+		videoID  string
+		noCache  bool
+		language string
+	}
+	postCommentArgs struct {
+		videoID string
+		text    string
+	}
+)
 var postCommentCmd = &cobra.Command{
 	Use: "comment",
 	Short: "Comment a video given its id",
+	Long: `Posts a top-level comment on a YouTube video.
+Requires --video-id and --text.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := loadClient()
+		client, err := loadClient(cmd.Context())
 		if err != nil {
-			return fmt.Errorf("loading client %v ",err)
+			return fmt.Errorf("loading client: %w", err)
 		}
-		err = client.PostComment(cmd.Context(), videoID, text)
+		err = client.PostComment(cmd.Context(), postCommentArgs.videoID, postCommentArgs.text)
 		if err != nil {
-			return fmt.Errorf("posting a comment %v ", err)
+			return fmt.Errorf("posting a comment: %w", err)
 		}
 		fmt.Println("Comment Posted!")
 		return nil
@@ -32,9 +45,15 @@ var postCommentCmd = &cobra.Command{
 }
 var getTranscriptCmd = &cobra.Command{
 	Use: "get-transcript",
+	Short: "Get video transcript",
+	Long: `Downloads a video transcript from YouTube and prints it with
+timestamps. Results are cached locally for faster subsequent access.
+
+Use --language to select a specific language (default: en).
+Use --no-cache to bypass the cache and fetch fresh data.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !noCache {
-			cached, err := LoadCachedTranscript(videoID)
+		if !getTranscriptArgs.noCache {
+			cached, err := youtube.LoadCachedTranscript(getTranscriptArgs.videoID)
 			if err != nil {
 				return err 
 			}
@@ -45,21 +64,21 @@ var getTranscriptCmd = &cobra.Command{
 				return nil
 			}
 		}
-		client, err := loadClient()
+		client, err := loadClient(cmd.Context())
 		if err != nil {
 			return err
 		}
 		fmt.Fprintln(cmd.ErrOrStderr(), "Fetching transcript from YouTube API...")
-		transcript, err := client.DownloadTranscript(cmd.Context(), videoID, languageFlag)
+		transcript, err := client.DownloadTranscript(cmd.Context(), getTranscriptArgs.videoID, getTranscriptArgs.language)
 		if err != nil {
 			return err
 		}
 
-		if err := SaveCachedTranscript(transcript); err != nil {
+		if err := youtube.SaveCachedTranscript(transcript); err != nil {
 			// Non-fatal: warn but still print the transcript.
 			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not cache transcript: %v\n", err)
 		} else {
-			path, _ := TranscriptCachePath(videoID)
+			path, _ := youtube.TranscriptCachePath(getTranscriptArgs.videoID)
 			fmt.Fprintf(cmd.ErrOrStderr(), "Transcript cached to %s\n\n", path)
 		}
 
@@ -70,21 +89,22 @@ var getTranscriptCmd = &cobra.Command{
 }
 var getCommentsCmd = &cobra.Command{
 	Use: "comments",
+	Short: "List comments for a video",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		client, err := loadClient()
+		client, err := loadClient(cmd.Context())
 		if err != nil {
 			return err
 		}
 
-		commentThread, err := client.GetComments(cmd.Context(), videoID, maxResults, order)
+		commentThread, err := client.GetComments(cmd.Context(), getCommentsArgs.videoID, getCommentsArgs.maxResults, getCommentsArgs.order)
 		if err != nil {
-			return fmt.Errorf("Retrieving comments: %v ", err)
+			return fmt.Errorf("retrieving comments: %w", err)
 		}
 
 		data, err := json.MarshalIndent(commentThread, "", "  ")
 		if err != nil {
-			return fmt.Errorf("Marshall video %v ", err)
+			return fmt.Errorf("marshaling comments: %w", err)
 		}
 
 		fmt.Println(string(data))
@@ -94,33 +114,27 @@ var getCommentsCmd = &cobra.Command{
 }
 var getVideoCmd = &cobra.Command{
 	Use:	"get",
+	Short:	"Get video details by ID",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := loadClient()
+		client, err := loadClient(cmd.Context())
 		if err != nil {
 			return err
 		}
-		video, err := client.GetVideo(cmd.Context(), videoID)
+		video, err := client.GetVideo(cmd.Context(), getVideoArgs.videoID)
 		if err != nil {
-			return fmt.Errorf("Retrieving video: %v ", err)
+			return fmt.Errorf("retrieving video: %w", err)
 		}
 		data, err := json.MarshalIndent(video, "", "  ")
 		if err != nil {
-			return fmt.Errorf("Marshall video %v ", err)
+			return fmt.Errorf("marshaling video: %w", err)
 		}
 		fmt.Println(string(data))
 		return nil
 	},
 }
-// videoCmd represents the video command
 var videoCmd = &cobra.Command{
 	Use:   "video",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "YouTube video operations",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("video called")
 	},
@@ -129,19 +143,24 @@ to quickly create a Cobra application.`,
 func init() {
 	rootCmd.AddCommand(videoCmd)
 	videoCmd.AddCommand(getVideoCmd)
-	getVideoCmd.Flags().StringVar(&videoID, "video-id", "", "YouTube Video ID")
+	getVideoCmd.Flags().StringVar(&getVideoArgs.videoID, "video-id", "", "YouTube Video ID")
+	getVideoCmd.MarkFlagRequired("video-id")
 
 	videoCmd.AddCommand(getCommentsCmd)
-	getCommentsCmd.Flags().StringVar(&videoID, "video-id", "", "YouTube Video ID")
-	getCommentsCmd.Flags().IntVar(&maxResults, "max-results", 20, "Max numbers of comments")
-	getCommentsCmd.Flags().StringVar(&order, "order", "time", "Comments order")
+	getCommentsCmd.Flags().StringVar(&getCommentsArgs.videoID, "video-id", "", "YouTube Video ID")
+	getCommentsCmd.MarkFlagRequired("video-id")
+	getCommentsCmd.Flags().IntVar(&getCommentsArgs.maxResults, "max-results", 20, "Max numbers of comments")
+	getCommentsCmd.Flags().StringVar(&getCommentsArgs.order, "order", "time", "Comments order")
 
 	videoCmd.AddCommand(getTranscriptCmd)
-	getTranscriptCmd.Flags().StringVar(&videoID, "video-id", "", "YouTube Video ID")
-	getTranscriptCmd.Flags().StringVar(&languageFlag, "language", "en", "Preferred caption language (e.g. en, es). Defaults to first available.")
-	getTranscriptCmd.Flags().BoolVar(&noCache, "no-cache", false, "Skip the local cache and always fetch from the API")
+	getTranscriptCmd.Flags().StringVar(&getTranscriptArgs.videoID, "video-id", "", "YouTube Video ID")
+	getTranscriptCmd.MarkFlagRequired("video-id")
+	getTranscriptCmd.Flags().StringVar(&getTranscriptArgs.language, "language", "en", "Preferred caption language (e.g. en, es). Defaults to first available.")
+	getTranscriptCmd.Flags().BoolVar(&getTranscriptArgs.noCache, "no-cache", false, "Skip the local cache and always fetch from the API")
 
 	videoCmd.AddCommand(postCommentCmd)
-	postCommentCmd.Flags().StringVar(&videoID, "video-id", "", "YouTube Video ID")
-	postCommentCmd.Flags().StringVar(&text, "text", "", "Comment content")
+	postCommentCmd.Flags().StringVar(&postCommentArgs.videoID, "video-id", "", "YouTube Video ID")
+	postCommentCmd.MarkFlagRequired("video-id")
+	postCommentCmd.Flags().StringVar(&postCommentArgs.text, "text", "", "Comment content")
+	postCommentCmd.MarkFlagRequired("text")
 }

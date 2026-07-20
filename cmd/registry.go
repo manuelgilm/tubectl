@@ -1,7 +1,3 @@
-/*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-
-*/
 package cmd
 
 import (
@@ -12,9 +8,22 @@ import (
 	"encoding/json"
 )
 
-var videoID, title string
+var (
+	regAddArgs struct {
+		videoID string
+		title   string
+	}
+	regDeleteArgs struct {
+		videoID string
+	}
+	regUpdateArgs struct {
+		videoID string
+		title   string
+	}
+)
 var registryUpdateCmd = &cobra.Command{
 	Use: "update",
+	Short: "Update a video's title in the registry",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		home, err := TubeCtlHome()
 		if err != nil {
@@ -24,14 +33,15 @@ var registryUpdateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if !registry.UpdateVideo(reg, videoID, title){
-			return fmt.Errorf("Video %s not found", videoID)
+		if !registry.UpdateVideo(reg, regUpdateArgs.videoID, regUpdateArgs.title){
+			return fmt.Errorf("video %s not found", regUpdateArgs.videoID)
 		}
 		return registry.SaveRegistry(home, reg)
 	},
 }
 var registryDeleteCmd = &cobra.Command{
 	Use: "delete",
+	Short: "Remove a video from the registry",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		home, err := TubeCtlHome()
 		if err != nil {
@@ -41,14 +51,15 @@ var registryDeleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if !registry.RemoveVideo(reg, videoID) {
-			return fmt.Errorf("video %s not found in registry", videoID)
+		if !registry.RemoveVideo(reg, regDeleteArgs.videoID) {
+			return fmt.Errorf("video %s not found in registry", regDeleteArgs.videoID)
 		}
 		return registry.SaveRegistry(home,reg)
 	},
 }
 var registryListCmd = &cobra.Command{
 	Use: "list",
+	Short: "List all registered videos",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		home, err := TubeCtlHome()
 		if err != nil {
@@ -68,6 +79,7 @@ var registryListCmd = &cobra.Command{
 }
 var registryAddCmd = &cobra.Command{
 	Use: "add",
+	Short: "Add a video to the registry",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		home, err := TubeCtlHome()
 		if err != nil {
@@ -77,23 +89,16 @@ var registryAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		err = registry.AddVideo(reg, videoID, title)
+		err = registry.AddVideo(reg, regAddArgs.videoID, regAddArgs.title)
 		if err != nil {
 			return err
 		}
 		return registry.SaveRegistry(home, reg)
 	},
 }
-// registryCmd represents the registry command
 var registryCmd = &cobra.Command{
 	Use:   "registry",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Manage the local video registry",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("registry called")
 	},
@@ -102,14 +107,18 @@ to quickly create a Cobra application.`,
 func init() {
 	rootCmd.AddCommand(registryCmd)
 	registryCmd.AddCommand(registryAddCmd)
-	registryAddCmd.Flags().StringVar(&videoID, "video-id", "", "YouTube Video ID")
-	registryAddCmd.Flags().StringVar(&title, "title", "", "YouTube Video Title")
+	registryAddCmd.Flags().StringVar(&regAddArgs.videoID, "video-id", "", "YouTube Video ID")
+	registryAddCmd.MarkFlagRequired("video-id")
+	registryAddCmd.Flags().StringVar(&regAddArgs.title, "title", "", "YouTube Video Title")
 	
 	registryCmd.AddCommand(registryListCmd)
 	registryCmd.AddCommand(registryDeleteCmd)
-	registryDeleteCmd.Flags().StringVar(&videoID, "video-id", "", "YouTube Video ID")
+	registryDeleteCmd.Flags().StringVar(&regDeleteArgs.videoID, "video-id", "", "YouTube Video ID")
+	registryDeleteCmd.MarkFlagRequired("video-id")
 
 	registryCmd.AddCommand(registryUpdateCmd)
-	registryUpdateCmd.Flags().StringVar(&videoID, "video-id", "", "YouTube Video ID")
-	registryUpdateCmd.Flags().StringVar(&title, "title", "", "YouTube Video Title")
+	registryUpdateCmd.Flags().StringVar(&regUpdateArgs.videoID, "video-id", "", "YouTube Video ID")
+	registryUpdateCmd.MarkFlagRequired("video-id")
+	registryUpdateCmd.Flags().StringVar(&regUpdateArgs.title, "title", "", "YouTube Video Title")
+	registryUpdateCmd.MarkFlagRequired("title")
 }

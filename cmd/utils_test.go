@@ -2,18 +2,17 @@ package cmd
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
+	"tubectl/internal/prompt"
 	"tubectl/internal/youtube"
 )
 
 func TestPromptFileRender(t *testing.T) {
 	t.Run("all vars present", func(t *testing.T) {
-		p := &PromptFile{
+		p := &prompt.PromptFile{
 			Template: "Hello {name}, you are {age} years old",
 			Vars:     []string{"name", "age"},
 		}
@@ -28,7 +27,7 @@ func TestPromptFileRender(t *testing.T) {
 	})
 
 	t.Run("missing var", func(t *testing.T) {
-		p := &PromptFile{
+		p := &prompt.PromptFile{
 			Template: "Hello {name}",
 			Vars:     []string{"name"},
 		}
@@ -39,7 +38,7 @@ func TestPromptFileRender(t *testing.T) {
 	})
 
 	t.Run("no vars defined", func(t *testing.T) {
-		p := &PromptFile{
+		p := &prompt.PromptFile{
 			Template: "Static text",
 			Vars:     nil,
 		}
@@ -53,7 +52,7 @@ func TestPromptFileRender(t *testing.T) {
 	})
 
 	t.Run("multiple occurrences of same var", func(t *testing.T) {
-		p := &PromptFile{
+		p := &prompt.PromptFile{
 			Template: "{x} + {x} = {y}",
 			Vars:     []string{"x", "y"},
 		}
@@ -75,7 +74,7 @@ func TestLoadPromptFile(t *testing.T) {
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			t.Fatal(err)
 		}
-		p, err := LoadPromptFile(path)
+		p, err := prompt.LoadPromptFile(path)
 		if err != nil {
 			t.Fatalf("LoadPromptFile: %v", err)
 		}
@@ -88,7 +87,7 @@ func TestLoadPromptFile(t *testing.T) {
 	})
 
 	t.Run("missing file", func(t *testing.T) {
-		_, err := LoadPromptFile("/nonexistent/path.yaml")
+		_, err := prompt.LoadPromptFile("/nonexistent/path.yaml")
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -101,30 +100,11 @@ func TestLoadPromptFile(t *testing.T) {
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			t.Fatal(err)
 		}
-		_, err := LoadPromptFile(path)
+		_, err := prompt.LoadPromptFile(path)
 		if err == nil {
 			t.Fatal("expected error for empty template")
 		}
 	})
-}
-
-func TestBuildMessagesYTBot(t *testing.T) {
-	messages, err := BuildMessagesYTBot("Great video!", "This is the transcript content.")
-	if err != nil {
-		t.Fatalf("BuildMessagesYTBot: %v", err)
-	}
-	if len(messages) != 1 {
-		t.Fatalf("got %d messages, want 1", len(messages))
-	}
-	if messages[0].Role != "system" {
-		t.Errorf("role = %q, want system", messages[0].Role)
-	}
-	if !strings.Contains(messages[0].Content, "Great video!") {
-		t.Errorf("content missing comment text")
-	}
-	if !strings.Contains(messages[0].Content, "This is the transcript content.") {
-		t.Errorf("content missing transcript text")
-	}
 }
 
 func TestPrintTranscript(t *testing.T) {
@@ -156,43 +136,4 @@ func TestPrintTranscript(t *testing.T) {
 	}
 }
 
-func TestTranscriptCacheRoundtrip(t *testing.T) {
-	// Test that transcript JSON serialization/deserialization works correctly.
-	transcript := &youtube.Transcript{
-		VideoID:   "test123",
-		Language:  "en",
-		TrackKind: "asr",
-		Lines: []youtube.TranscriptLine{
-			{Start: 1.0, Duration: 2.0, Text: "hello"},
-		},
-	}
 
-	dir := t.TempDir()
-	p := filepath.Join(dir, "transcript.json")
-	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	enc := json.NewEncoder(f)
-	if err := enc.Encode(transcript); err != nil {
-		f.Close()
-		t.Fatal(err)
-	}
-	f.Close()
-
-	f2, err := os.Open(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f2.Close()
-	var loaded youtube.Transcript
-	if err := json.NewDecoder(f2).Decode(&loaded); err != nil {
-		t.Fatal(err)
-	}
-	if loaded.VideoID != "test123" || loaded.Language != "en" {
-		t.Errorf("loaded = %+v", loaded)
-	}
-	if len(loaded.Lines) != 1 || loaded.Lines[0].Text != "hello" {
-		t.Errorf("lines = %+v", loaded.Lines)
-	}
-}

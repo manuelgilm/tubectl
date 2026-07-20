@@ -3,25 +3,31 @@ package cmd
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"tubectl/internal/prompt"
 )
 
-var model string
-var query string
+var completeArgs struct {
+	model string
+	query string
+}
 
 var completeCmd = &cobra.Command{
 	Use:   "complete",
 	Short: "Use OpenAI completion AI",
+	Long: `Sends a prompt to the OpenAI API and prints the response.
+Requires --query. Optionally set --model to override the default
+(gpt-4o-mini). Requires OPENAI_API_KEY environment variable.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if query == "" {
+		if completeArgs.query == "" {
 			return fmt.Errorf("--query is required")
 		}
 
-		openaiClient, err := loadOpenAIClient(model)
+		openaiClient, err := loadOpenAIClient(cmd.Context(), completeArgs.model)
 		if err != nil {
 			return fmt.Errorf("loading openai client: %w", err)
 		}
 
-		messages, err := BuildMessagesYTBot(query, "Video without context")
+		messages, err := prompt.BuildMessagesYTBot(completeArgs.query, "Video without context")
 		if err != nil {
 			return fmt.Errorf("building messages: %w", err)
 		}
@@ -44,6 +50,7 @@ var aiCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(aiCmd)
 	aiCmd.AddCommand(completeCmd)
-	completeCmd.Flags().StringVar(&model, "model", "", "Name of the API model. Defaults to gpt-4o-mini")
-	completeCmd.Flags().StringVar(&query, "query", "", "User prompt text")
+	completeCmd.Flags().StringVar(&completeArgs.model, "model", "", "Name of the API model. Defaults to gpt-4o-mini")
+	completeCmd.Flags().StringVar(&completeArgs.query, "query", "", "User prompt text")
+	completeCmd.MarkFlagRequired("query")
 }

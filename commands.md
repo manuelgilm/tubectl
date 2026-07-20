@@ -50,7 +50,7 @@ Send a raw prompt to the LLM. Default model: `gpt-4o-mini`.
 
 ## bot
 
-`tubectl bot answer-comment --video-id <id> --comment-id <id> [--auto-approve] [--only-print] [--prompt-file <path>]`
+`tubectl bot answer-comment --video-id <id> --comment-id <id> [--auto-approve] [--only-print] [--prompt-file <path>] [--prompt-name <name>]`
 
 Generate an AI reply to a comment using the video transcript as context, then optionally post it.
 
@@ -58,6 +58,7 @@ Generate an AI reply to a comment using the video transcript as context, then op
 - `--auto-approve`: skip confirmation, post immediately
 - `--only-print`: generate the reply but do not post
 - `--prompt-file`: use a custom YAML prompt template instead of the default
+- `--prompt-name`: fetch a prompt from the MLflow registry by name (takes precedence over `--prompt-file`)
 
 ## Notes
 

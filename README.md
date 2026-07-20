@@ -1,6 +1,10 @@
 # tubectl
 
-CLI for YouTube management and AI-powered automations.
+CLI for YouTube comment management and AI-powered automations.
+`tubectl` fetches video metadata, transcripts, and comments from the
+YouTube Data API, caches them locally, and uses OpenAI to generate
+intelligent replies. It can run interactively or as a scheduled
+GitHub Actions bot to automatically reply to new comments.
 
 ## Prerequisites
 
@@ -9,6 +13,11 @@ CLI for YouTube management and AI-powered automations.
 | `OPENAI_API_KEY` | `tubectl ai` and `tubectl bot` commands |
 | `YOUTUBE_CLIENT_ID` | `tubectl auth youtube` (OAuth) |
 | `YOUTUBE_CLIENT_SECRET` | `tubectl auth youtube` (OAuth) |
+| `MLFLOW_TRACKING_USERNAME` | `tubectl auth mlflow`, `tubectl prompt`, and MLflow tracing |
+| `MLFLOW_TRACKING_PASSWORD` | `tubectl auth mlflow`, `tubectl prompt`, and MLflow tracing |
+| `MLFLOW_SERVER_URL` | `tubectl auth mlflow`, `tubectl prompt`, and MLflow tracing (default `https://sandbox-mlflow.gilmanuel.com`) |
+| `MLFLOW_TRACING_ENABLED` | MLflow tracing — set to `true` to enable (`ai` / `bot` commands) |
+| `MLFLOW_EXPERIMENT_ID` | MLflow tracing — routes traces to a specific experiment (default `"0"`)
 
 ## Installation
 
@@ -41,8 +50,9 @@ tubectl video get-transcript --video-id dQw4w9WgXcQ
 tubectl video comments --video-id dQw4w9WgXcQ --max-results 10
 
 # 7. AI-powered reply to a comment
+# Use the "id" field from the `video comments` output as --comment-id
 export OPENAI_API_KEY=...
-tubectl bot answer-comment --video-id dQw4w9WgXcQ --comment-id Ug... --only-print
+tubectl bot answer-comment --video-id dQw4w9WgXcQ --comment-id Ugz... --only-print
 
 # 8. Post the reply (with confirmation prompt)
 tubectl bot answer-comment --video-id dQw4w9WgXcQ --comment-id Ug...
@@ -60,7 +70,7 @@ tubectl bot answer-comment --video-id dQw4w9WgXcQ --comment-id Ug... --auto-appr
   registry.json     # Registered video metadata
   config.json       # CLI configuration
   transcripts/      # Cached transcripts by video ID
-  auth/             # OAuth tokens per service
+  auth/             # OAuth tokens and credentials per service
   prompts/          # YAML prompt templates (optional)
 ```
 
@@ -74,14 +84,20 @@ Creates the `~/.tubectl/` directory tree (registry, config, transcripts, auth, p
 
 ### `tubectl auth`
 
-OAuth authentication for YouTube.
+Authentication providers for YouTube and MLflow.
 
 ```
 tubectl auth youtube           # Authenticate interactively (if no valid token exists)
 tubectl auth youtube --force   # Force re-authentication even if a token is valid
+tubectl auth mlflow --username <user> --password <pass>
+tubectl auth mlflow --username <user> --password <pass> --force
 ```
 
-Opens a browser URL, listens for the OAuth callback on a local port, and saves the token to `~/.tubectl/auth/youtube.json`.
+**YouTube**: Opens a browser URL, listens for the OAuth callback on a local port, and saves the token to `~/.tubectl/auth/youtube.json`. Requires `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` environment variables.
+
+The OAuth redirect URI must be configured in the Google Cloud Console as `http://127.0.0.1:{port}/callback` (the port is chosen at runtime).
+
+**MLflow**: Saves credentials to `~/.tubectl/auth/mlflow.json`. Can also use `MLFLOW_TRACKING_USERNAME` and `MLFLOW_TRACKING_PASSWORD` environment variables instead of flags.
 
 ### `tubectl registry`
 
@@ -94,7 +110,7 @@ Local metadata cache for videos you want to monitor.
 | `delete` | `--video-id` (required) | Remove a video from the registry |
 | `update` | `--video-id` (required), `--title` | Update a video's title |
 
-Registering the same video twice returns a warning. Deleting a non-existent video returns an error.
+Registering the same video twice returns an error. Deleting a non-existent video returns an error.
 
 ### `tubectl video`
 
@@ -135,7 +151,7 @@ YouTube automations powered by AI.
 
 | Subcommand | Flags | Description |
 |---|---|---|
-| `answer-comment` | `--video-id`, `--comment-id`, `--auto-approve`, `--only-print`, `--prompt-file` | Generate an AI reply to a comment and optionally post it |
+| `answer-comment` | `--video-id`, `--comment-id`, `--auto-approve`, `--only-print`, `--prompt-file`, `--prompt-name` | Generate an AI reply to a comment and optionally post it |
 
 #### `bot answer-comment` flow
 
@@ -147,6 +163,7 @@ YouTube automations powered by AI.
 6. `--only-print`: just print the reply, don't post
 7. `--auto-approve`: skip the confirmation prompt and post immediately
 8. `--prompt-file`: use a custom YAML prompt file instead of the default prompt
+9. `--prompt-name`: fetch a prompt from the MLflow registry by name (takes precedence over `--prompt-file`)
 
 #### Custom Prompt Files
 
@@ -164,13 +181,138 @@ vars:
 
 Use with `--prompt-file path/to/prompt.yaml`.
 
+### `tubectl prompt`
+
+Query prompts from the MLflow prompt registry.
+
+| Subcommand | Flags | Description |
+|---|---|---|
+| `list` | — | List all prompts from the MLflow registry (JSON) |
+| `get` | `--name` (required) | Get a specific prompt by name (JSON) |
+
+Requires authentication via `tubectl auth mlflow` or `MLFLOW_TRACKING_USERNAME`/`MLFLOW_TRACKING_PASSWORD` environment variables.
+
+### MLflow Tracing
+
+`tubectl` can trace OpenAI API calls to an MLflow server using the
+OpenTelemetry protocol (protobuf). Each `ai complete` or `bot answer-comment`
+invocation creates a trace with:
+
+- Model name, prompt messages, and response
+- Token usage (prompt, completion, total)
+- Latency and finish reason
+- Error information on failure
+
+Enable it with `MLFLOW_TRACING_ENABLED=true` and configure MLflow credentials
+(shared with `tubectl prompt` and `tubectl auth mlflow`):
+
+```bash
+export MLFLOW_TRACING_ENABLED=true
+export MLFLOW_SERVER_URL=http://localhost:5000   # optional, defaults to https://sandbox-mlflow.gilmanuel.com
+
+# Using environment variables:
+export MLFLOW_TRACKING_USERNAME=admin
+export MLFLOW_TRACKING_PASSWORD=secret
+tubectl ai complete --query "Hello"
+
+# Or using saved credentials:
+tubectl auth mlflow --username admin --password secret
+tubectl ai complete --query "Hello"
+```
+
+Traces appear in the MLflow UI under the experiment specified by `MLFLOW_EXPERIMENT_ID` (default `"0"`). No tracing occurs when
+`MLFLOW_TRACING_ENABLED` is unset or not `"true"`. Trace failures (network,
+server errors) are logged to stderr and never block the command.
+
 ## Output Format
 
-All data-fetching commands return JSON. Status messages go to stderr, so you can redirect JSON output to a file:
+All data-fetching commands return JSON to stdout. Status and warning messages go to stderr, so you can redirect JSON output to a file:
 
 ```bash
 tubectl video get --video-id dQw4w9WgXcQ > video.json
 ```
+
+### Example outputs
+
+`tubectl video get --video-id dQw4w9WgXcQ`:
+
+```json
+{
+  "id": "dQw4w9WgXcQ",
+  "snippet": {
+    "title": "Rick Astley - Never Gonna Give You Up",
+    "description": "The official video for \"Never Gonna Give You Up\".",
+    "publishedAt": "2009-10-25T06:57:33Z",
+    "channelId": "UCuAXFkgsw1L7xaCfnd5JJOw"
+  }
+}
+```
+
+`tubectl video comments --video-id dQw4w9WgXcQ --max-results 2`:
+
+```json
+[
+  {
+    "id": "Ugz_abc123",
+    "snippet": {
+      "videoId": "dQw4w9WgXcQ",
+      "topLevelComment": {
+        "snippet": {
+          "authorDisplayName": "Viewer1",
+          "textDisplay": "Great video!",
+          "publishedAt": "2026-07-13T10:00:00Z"
+        }
+      }
+    }
+  }
+]
+```
+
+`tubectl video get-transcript --video-id dQw4w9WgXcQ` (transcript lines printed to stdout with timestamps; cache status goes to stderr):
+
+```
+[00:00] We're no strangers to love
+[00:03] You know the rules and so do I
+[00:06] A full commitment's what I'm thinking of
+```
+
+`tubectl registry list`:
+
+```json
+{
+  "videos": [
+    {
+      "title": "Rick Astley - Never Gonna Give You Up",
+      "video_id": "dQw4w9WgXcQ",
+      "published_at": "2009-10-25T06:57:33Z",
+      "registered_at": "2026-07-13T12:00:00Z"
+    }
+  ]
+}
+```
+
+## GitHub Actions Auto-Reply
+
+The repository includes a GitHub Actions workflow (`.github/workflows/reply-to-comments.yml`) that runs on a schedule (every 2 hours) and automatically replies to new YouTube comments using the AI bot.
+
+The workflow:
+
+1. **Builds** `tubectl` and restores a base64-encoded OAuth token from a secret.
+2. **Fetches comments** for each video listed in `registered_videos.yaml`.
+3. **Filters** for comments posted since the last run.
+4. **Generates replies** via `tubectl bot answer-comment --auto-approve` for each new comment.
+5. **Tracks** which comments have been replied to across runs using `pending.json` artifacts.
+
+Required secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `YOUTUBE_CLIENT_ID` | YouTube OAuth client ID |
+| `YOUTUBE_CLIENT_SECRET` | YouTube OAuth client secret |
+| `OPENAI_API_KEY` | OpenAI API key for the AI bot |
+| `TUBECTL_TOKEN` | Base64-encoded OAuth token file saved by `tubectl auth youtube` |
+
+To set up: run `tubectl auth youtube` locally, base64-encode `~/.tubectl/auth/youtube.json`, and add it as the `TUBECTL_TOKEN` secret.
 
 ## Makefile Targets
 
@@ -178,5 +320,31 @@ tubectl video get --video-id dQw4w9WgXcQ > video.json
 |---|---|
 | `make build` | Run tests, then compile into `./bin/tubectl` |
 | `make install` | Run tests, then install to `$GOPATH/bin/tubectl` |
-| `make test` | Run all tests |
+| `make test` | Run all tests (`go test ./...`) |
 | `make clean` | Remove `./bin/` |
+
+## Troubleshooting
+
+### `init` not run
+
+If you see errors about missing registry or config files, run `tubectl init` first to create the `~/.tubectl/` directory tree.
+
+### OAuth token expired
+
+`tubectl` automatically refreshes expired tokens when making API calls, but the refresh requires `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` to be set in the environment. If refresh fails, re-authenticate with `tubectl auth youtube --force`.
+
+### Transcript not available
+
+Not all YouTube videos have captions enabled. `tubectl` attempts the OAuth-authenticated caption download first, then falls back to the public timedtext endpoint. If both fail, the transcript is reported as unavailable and the bot command continues without transcript context.
+
+### Caption download returns empty body
+
+The caption download endpoint requires the video to be owned by or accessible to the authenticated account. For videos you don't own, `tubectl` falls back to the public timedtext endpoint, which works for most public videos.
+
+### Traces not appearing in MLflow
+
+Check that `MLFLOW_TRACING_ENABLED=true` is set. If it is, verify the MLflow server URL with `MLFLOW_SERVER_URL` — the default of `https://sandbox-mlflow.gilmanuel.com` is a remote server. Tracing uses the same credentials as `tubectl prompt` (env vars or `tubectl auth mlflow`). If traces appear in the wrong experiment, set `MLFLOW_EXPERIMENT_ID` to the correct experiment ID.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
