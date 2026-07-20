@@ -7,7 +7,7 @@ env:
   MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
   MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
   MLFLOW_EXPERIMENT_ID: ${{ secrets.MLFLOW_EXPERIMENT_ID }}
-  MLFLOW_TRACKING_ENABLED: ${{ github.event.inputs.environment_type }}
+  MLFLOW_TRACING_ENABLED: ${{ github.event.inputs.environment_type }}
 on:
   schedule:
     - cron: '0 */2 * * *'
