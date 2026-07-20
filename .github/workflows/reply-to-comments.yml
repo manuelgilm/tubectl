@@ -11,7 +11,15 @@ on:
   schedule:
     - cron: '0 */2 * * *'
   workflow_dispatch:
-
+    inputs:
+      mlflow_tracing_enabled:          
+        description: 'MLflow tracing — set to true to enable (ai / bot commands)'
+        required: true
+        default: true
+        type: choice
+        options:
+          - true
+          - false
 jobs:
   fetch-comments:
     runs-on: ubuntu-latest
