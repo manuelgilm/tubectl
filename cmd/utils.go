@@ -53,8 +53,8 @@ func newMLflowTracer(_ context.Context) *trace.MLflowTracer {
 	if os.Getenv("MLFLOW_TRACING_ENABLED") != "true" {
 		return nil
 	}
-	username := os.Getenv("MLFLOW_USERNAME")
-	password := os.Getenv("MLFLOW_PASSWORD")
+	username := os.Getenv("MLFLOW_TRACKING_USERNAME")
+	password := os.Getenv("MLFLOW_TRACKING_PASSWORD")
 	serverURL := os.Getenv("MLFLOW_SERVER_URL")
 
 	if username == "" || password == "" {
@@ -75,7 +75,11 @@ func newMLflowTracer(_ context.Context) *trace.MLflowTracer {
 	if serverURL == "" {
 		serverURL = prompt.DefaultMlflowServer
 	}
-	return trace.NewMLflowTracer(serverURL, username, password)
+	tracer := trace.NewMLflowTracer(serverURL, username, password)
+	if expID := os.Getenv("MLFLOW_EXPERIMENT_ID"); expID != "" {
+		tracer.WithExperimentID(expID)
+	}
+	return tracer
 }
 
 func loadConfig() (Config, error) {
@@ -95,8 +99,8 @@ func loadConfig() (Config, error) {
 }
 
 func loadMlflowClient() (*prompt.Client, error) {
-	username := os.Getenv("MLFLOW_USERNAME")
-	password := os.Getenv("MLFLOW_PASSWORD")
+	username := os.Getenv("MLFLOW_TRACKING_USERNAME")
+	password := os.Getenv("MLFLOW_TRACKING_PASSWORD")
 
 	if username != "" && password != "" {
 		serverURL := os.Getenv("MLFLOW_SERVER_URL")
@@ -109,7 +113,7 @@ func loadMlflowClient() (*prompt.Client, error) {
 	}
 	creds, err := prompt.LoadCredentials(filepath.Join(home, "auth", "mlflow.json"))
 	if err != nil {
-		return nil, fmt.Errorf("MLflow credentials not found. Set MLFLOW_USERNAME/MLFLOW_PASSWORD env vars or run 'tubectl auth mlflow --username <user> --password <pass>'")
+		return nil, fmt.Errorf("MLflow credentials not found. Set MLFLOW_TRACKING_USERNAME/MLFLOW_TRACKING_PASSWORD env vars or run 'tubectl auth mlflow --username <user> --password <pass>'")
 	}
 	return prompt.NewClient(creds.Username, creds.Password, creds.ServerURL), nil
 }
