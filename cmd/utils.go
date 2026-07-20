@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"path/filepath"
 	"tubectl/internal/ai"
 	"tubectl/internal/prompt"
 	"tubectl/internal/trace"
 	"tubectl/internal/youtube"
+	"github.com/spf13/cobra"
 )
 
 func printTranscript(t *youtube.Transcript) {
@@ -132,4 +135,211 @@ func loadClient(ctx context.Context) (*youtube.Client, error) {
 	}
 
 	return youtube.NewClient(token), nil
+}
+
+
+func GetTranscriptText(cmd *cobra.Command, videoID string) (string, error) {
+	transcript, err := youtube.LoadCachedTranscript(videoID)
+	if err != nil {
+		return "", fmt.Errorf("loading cached transcript: %w", err)
+	}
+
+	if transcript == nil {
+		// There is no cached transcript
+		client, err := loadClient(cmd.Context())
+		if err != nil {
+			return "", err
+		}
+		t, err := client.DownloadTranscript(cmd.Context(), answerCommentArgs.videoID, "")
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: transcript not available: %v\n", err)
+		} else {
+			transcript = t
+			if saveErr := youtube.SaveCachedTranscript(transcript); saveErr != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not cache transcript: %v\n", saveErr)
+			}
+		}
+	}
+
+	var transcriptText string
+	if transcript != nil {
+		var b strings.Builder
+		for _, line := range transcript.Lines {
+			b.WriteString(line.Text)
+			b.WriteString(" ")
+		}
+		transcriptText = b.String()
+	}
+	return transcriptText, nil
+}
+func ResolvePromptTemplate(cmd *cobra.Command, promptName, promptFile, commentText, transcriptText string) (string, error) {
+
+	var resolvedTemplate string
+	var err error
+	switch {
+		case promptName != "":
+			resolvedTemplate, err = ResolvePromptFromMLflowRegistry(cmd, promptName, commentText, transcriptText)
+			if err != nil {
+				return "", err
+			}
+		case promptFile != "":
+			resolvedTemplate, err = ResolvePromptFromFile(promptFile, commentText, transcriptText)
+			if err != nil {
+				return "", err
+			}
+		default:
+			resolvedTemplate, err = resolveBotPrompt(cmd, cmd.ErrOrStderr(), commentText, transcriptText)
+			if err != nil {
+				return "", fmt.Errorf("resolving prompt: %w", err)
+			}
+		}
+	return resolvedTemplate, nil
+}
+
+func ResolvePromptFromFile(promptFile, commentText, transcriptText string) (string, error) {
+	pf, err := prompt.LoadPromptFile(promptFile)
+	if err != nil {
+		return "",fmt.Errorf("loading prompt file: %w", err)
+	}
+	rendered, err := pf.Render(map[string]string{
+		"comment":    commentText,
+		"transcript": transcriptText,
+	})
+	if err != nil {
+		return "", fmt.Errorf("rendering prompt: %w", err)
+	}
+	return rendered, nil
+}
+
+func ResolvePromptFromMLflowRegistry(cmd *cobra.Command, promptName, commentText, transcriptText string) (string, error) {
+	mlflowClient, err := loadMlflowClient()
+	if err != nil {
+		return "" , fmt.Errorf("loading MLflow client: %w", err)
+	}
+	registered, err := mlflowClient.GetPrompt(cmd.Context(), promptName)
+	if err != nil {
+		return "", fmt.Errorf("fetching prompt %q from MLflow: %w", promptName, err)
+	}
+	template := registered.PromptText()
+	if template == "" {
+		return "", fmt.Errorf("prompt %q has no prompt text in MLflow",promptName)
+	}
+	rendered := renderTemplate(template, commentText, transcriptText)	
+	return rendered, nil
+}
+
+func resolveBotPrompt(cmd *cobra.Command, w io.Writer, commentText, transcriptText string) (string, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(w, "Warning: could not load config: %v\n", err)
+		return tryLocalPrompt(Config{}, commentText, transcriptText)
+	}
+
+	modelName := cfg.BotPrompt.AnswerCommentModel
+	if modelName == "" {
+		return tryLocalPrompt(cfg, commentText, transcriptText)
+	}
+
+	mlflowClient, err := loadMlflowClient()
+	if err == nil {
+		registered, err := mlflowClient.GetPrompt(cmd.Context(), modelName)
+		if err == nil {
+			template := registered.PromptText()
+			if template != "" {
+				rendered := renderTemplate(template, commentText, transcriptText)
+				return rendered, nil
+			}
+		}
+	}
+
+	return tryLocalPrompt(cfg, commentText, transcriptText)
+}
+
+func tryLocalPrompt(cfg Config, commentText, transcriptText string) (string, error) {
+	home, err := TubeCtlHome()
+	if err != nil {
+		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
+	}
+
+	modelName := cfg.BotPrompt.AnswerCommentModel
+	if modelName == "" {
+		modelName = "yt-bot-answer-comment"
+	}
+
+	pf, err := prompt.LoadPromptFile(filepath.Join(home, "prompts", modelName+".yaml"))
+	if err != nil {
+		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
+	}
+
+	rendered, err := pf.Render(map[string]string{
+		"comment":    commentText,
+		"transcript": transcriptText,
+	})
+	if err != nil {
+		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
+	}
+
+	return rendered, nil
+}
+func ResolveComment(cmd *cobra.Command, commentID string) (string, error){
+	client, err := loadClient(cmd.Context())
+	if err != nil {
+		return "", err
+	}
+	comment, err := client.GetComment(cmd.Context(), commentID)
+	if err != nil {
+		return "", fmt.Errorf("getting comment: %w", err)
+	}
+	commentText := comment.Snippet.TextDisplay	
+	return commentText, nil
+}
+
+func GenerateAnswer(cmd *cobra.Command, resolvedTemplate string) (string, error) {
+	messages := []ai.Message{
+		{Role: "system", Content: resolvedTemplate},
+	}
+	
+	aiClient, err := loadOpenAIClient(cmd.Context(), "")
+	if err != nil {
+		return "", fmt.Errorf("loading AI client: %w", err)
+	}
+	reply, err := aiClient.Complete(cmd.Context(), messages)
+	if err != nil {
+		return "", fmt.Errorf("AI completion failed: %w", err)
+	}
+	return reply, nil
+}
+
+func replyComment(cmd *cobra.Command, commentID, reply string, autoApprove bool) error {
+
+	fmt.Fprintf(cmd.ErrOrStderr(), "Generated reply:\n---\n%s\n---\n", reply)
+	if !autoApprove {
+		fmt.Fprint(cmd.ErrOrStderr(), "Post this reply? [y/N]: ")
+		var confirm string
+		if _, err := fmt.Scanln(&confirm); err != nil {
+			return fmt.Errorf("reading confirmation (use --auto-approve in non-interactive mode): %w", err)
+		}
+		if confirm != "y" && confirm != "Y" {
+			fmt.Println("Reply cancelled.")
+			return nil
+		}
+	}
+	client, err := loadClient(cmd.Context())
+	if err != nil {
+		return err
+	}
+	posted, err := client.ReplyToComment(cmd.Context(), commentID, reply)
+	if err != nil {
+		return fmt.Errorf("posting reply: %w", err)
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "Reply posted (ID: %s)\n", posted.ID)
+	fmt.Println(reply)
+	return nil	
+}
+
+
+func renderTemplate(template, commentText, transcriptText string) string {
+	result := strings.ReplaceAll(template, "{{comment}}", commentText)
+	result = strings.ReplaceAll(result, "{{transcript}}", transcriptText)
+	return result
 }
