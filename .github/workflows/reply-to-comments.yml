@@ -6,6 +6,7 @@ env:
   DEFAULT_SYSTEM_PROMPT_NAME: "sama_bot_system_prompt"
   MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
   MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+  MLFLOW_EXPERIMENT_ID: $${{ secrets.MLFLOW_EXPERIMENT_ID }}
 on:
   schedule:
     - cron: '0 */2 * * *'
