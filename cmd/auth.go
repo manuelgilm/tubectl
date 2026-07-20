@@ -55,7 +55,7 @@ var authMlflowCmd = &cobra.Command{
 by other commands.
 
 Credentials can be provided via --username/--password flags or by
-setting the MLFLOW_USERNAME and MLFLOW_PASSWORD environment variables.
+setting the MLFLOW_TRACKING_USERNAME and MLFLOW_TRACKING_PASSWORD environment variables.
 Use --force to overwrite existing credentials.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		home, err := TubeCtlHome()
@@ -74,13 +74,13 @@ Use --force to overwrite existing credentials.`,
 		username := authMlflowArgs.username
 		password := authMlflowArgs.password
 		if username == "" {
-			username = os.Getenv("MLFLOW_USERNAME")
+			username = os.Getenv("MLFLOW_TRACKING_USERNAME")
 		}
 		if password == "" {
-			password = os.Getenv("MLFLOW_PASSWORD")
+			password = os.Getenv("MLFLOW_TRACKING_PASSWORD")
 		}
 		if username == "" || password == "" {
-			return fmt.Errorf("provide --username and --password or set MLFLOW_USERNAME/MLFLOW_PASSWORD environment variables")
+			return fmt.Errorf("provide --username and --password or set MLFLOW_TRACKING_USERNAME/MLFLOW_TRACKING_PASSWORD environment variables")
 		}
 
 		provider := prompt.NewMLflowProvider(credsPath)

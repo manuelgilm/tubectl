@@ -9,8 +9,8 @@ import (
 )
 
 func TestLoadMlflowClient_withEnvVars(t *testing.T) {
-	t.Setenv("MLFLOW_USERNAME", "env-user")
-	t.Setenv("MLFLOW_PASSWORD", "env-pass")
+	t.Setenv("MLFLOW_TRACKING_USERNAME", "env-user")
+	t.Setenv("MLFLOW_TRACKING_PASSWORD", "env-pass")
 
 	client, err := loadMlflowClient()
 	if err != nil {
@@ -36,8 +36,8 @@ func TestLoadMlflowClient_fallbackToCredentials(t *testing.T) {
 
 	t.Setenv("HOME", home)
 	// Unset env vars to test fallback
-	t.Setenv("MLFLOW_USERNAME", "")
-	t.Setenv("MLFLOW_PASSWORD", "")
+	t.Setenv("MLFLOW_TRACKING_USERNAME", "")
+	t.Setenv("MLFLOW_TRACKING_PASSWORD", "")
 
 	client, err := loadMlflowClient()
 	if err != nil {
@@ -51,8 +51,8 @@ func TestLoadMlflowClient_fallbackToCredentials(t *testing.T) {
 func TestLoadMlflowClient_errorWhenUnavailable(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("MLFLOW_USERNAME", "")
-	t.Setenv("MLFLOW_PASSWORD", "")
+	t.Setenv("MLFLOW_TRACKING_USERNAME", "")
+	t.Setenv("MLFLOW_TRACKING_PASSWORD", "")
 
 	_, err := loadMlflowClient()
 	if err == nil {
