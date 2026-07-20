@@ -3,6 +3,10 @@ env:
   YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
   YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  DEFAULT_SYSTEM_PROMPT_NAME: "sama_bot_system_prompt"
+  MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+  MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+  MLFLOW_EXPERIMENT_ID: $${{ secrets.MLFLOW_EXPERIMENT_ID }}
 on:
   schedule:
     - cron: '0 */2 * * *'
@@ -118,7 +122,8 @@ jobs:
             if ./tubectl bot answer-comment \
               --video-id "$video_id" \
               --comment-id "$comment_id" \
-              --auto-approve; then
+              --auto-approve \
+              --prompt-name ${{env.DEFAULT_SYSTEM_PROMPT_NAME}}; then
               jq --arg cid "$comment_id" \
                 '(.[] | select(.comment_id == $cid) | .replied) = true' \
                 pending.json > updated.json
