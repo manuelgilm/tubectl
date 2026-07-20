@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -44,55 +43,10 @@ func (t *MLflowTracer) WithExperimentID(id string) *MLflowTracer {
 	return t
 }
 
-func (t *MLflowTracer) StartTrace(ctx context.Context, experimentID string) (string, error) {
-	eid := t.experimentID
-	if experimentID != "" {
-		eid = experimentID
-	}
-	body, err := json.Marshal(map[string]any{
-		"experiment_id": eid,
-		"timestamp_ms":  time.Now().UnixMilli(),
-	})
-	if err != nil {
-		return "", fmt.Errorf("marshal start trace: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		t.baseURL+"/ajax-api/2.0/mlflow/traces", bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("build start trace request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if t.username != "" {
-		req.SetBasicAuth(t.username, t.password)
-	}
-	resp, err := t.http.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("start trace: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		data, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("start trace: %s %s", resp.Status, strings.TrimSpace(string(data)))
-	}
-	var result struct {
-		TraceInfo struct {
-			RequestID string `json:"request_id"`
-		} `json:"trace_info"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode trace info: %w", err)
-	}
-	if result.TraceInfo.RequestID == "" {
-		return "", fmt.Errorf("start trace: empty request_id in response")
-	}
-	return result.TraceInfo.RequestID, nil
-}
-
 func (t *MLflowTracer) CreateSpan(ctx context.Context, req ai.SpanRequest) error {
-	rawTraceID := req.TraceID
-	traceID, err := hex.DecodeString(strings.TrimPrefix(rawTraceID, "tr-"))
+	traceID, err := hex.DecodeString(req.TraceID)
 	if err != nil {
-		return fmt.Errorf("decode trace id %q: %w", rawTraceID, err)
+		return fmt.Errorf("decode trace id %q: %w", req.TraceID, err)
 	}
 	spanID := make([]byte, 8)
 	if _, err := rand.Read(spanID); err != nil {
@@ -162,33 +116,6 @@ func (t *MLflowTracer) CreateSpan(ctx context.Context, req ai.SpanRequest) error
 	resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("create span: %s", resp.Status)
-	}
-	return nil
-}
-
-func (t *MLflowTracer) EndTrace(ctx context.Context, requestID, status string) error {
-	body, err := json.Marshal(map[string]string{"status": status})
-	if err != nil {
-		return fmt.Errorf("marshal end trace: %w", err)
-	}
-	httpReq, err := http.NewRequestWithContext(ctx, "PATCH",
-		fmt.Sprintf("%s/ajax-api/2.0/mlflow/traces/%s", t.baseURL, requestID),
-		bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("build end trace request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if t.username != "" {
-		httpReq.SetBasicAuth(t.username, t.password)
-	}
-	resp, err := t.http.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("end trace: %w", err)
-	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("end trace: %s", resp.Status)
 	}
 	return nil
 }

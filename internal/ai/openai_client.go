@@ -3,6 +3,8 @@ package ai
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,9 +17,7 @@ const defaultBaseURL = "https://api.openai.com/v1"
 
 // Tracer is an optional observer of LLM calls.
 type Tracer interface {
-	StartTrace(ctx context.Context, experimentID string) (requestID string, err error)
 	CreateSpan(ctx context.Context, req SpanRequest) error
-	EndTrace(ctx context.Context, requestID, status string) error
 }
 
 // SpanRequest captures everything needed to build an OTel span.
@@ -78,20 +78,18 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (_ string, ca
 	start := time.Now()
 
 	// Trace data populated after the API response is decoded.
-	var requestID string
+	var traceID string
 	var finishReason, content string
 	var promptTokens, completionTokens, totalTokens int
 
 	if c.tracer != nil {
-		rid, terr := c.tracer.StartTrace(ctx, "")
-		if terr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: trace start: %v\n", terr)
-		} else {
-			requestID = rid
+		tid := make([]byte, 16)
+		if _, err := rand.Read(tid); err == nil {
+			traceID = hex.EncodeToString(tid)
 		}
 	}
 	defer func() {
-		if c.tracer == nil || requestID == "" {
+		if c.tracer == nil || traceID == "" {
 			return
 		}
 		errStr := ""
@@ -99,7 +97,7 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (_ string, ca
 			errStr = callErr.Error()
 		}
 		spanReq := SpanRequest{
-			TraceID:          requestID,
+			TraceID:          traceID,
 			Name:             "openai_chat",
 			StartTime:        start,
 			EndTime:          time.Now(),
@@ -115,13 +113,6 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (_ string, ca
 		}
 		if serr := c.tracer.CreateSpan(ctx, spanReq); serr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: trace span: %v\n", serr)
-		}
-		status := "OK"
-		if callErr != nil {
-			status = "ERROR"
-		}
-		if eerr := c.tracer.EndTrace(ctx, requestID, status); eerr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: trace end: %v\n", eerr)
 		}
 	}()
 

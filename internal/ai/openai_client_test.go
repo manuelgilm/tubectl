@@ -5,72 +5,23 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 )
 
-// mockTracer records trace calls for testing.
+// mockTracer records CreateSpan calls for testing.
 type mockTracer struct {
-	mu           sync.Mutex
-	startCalled  bool
-	startExpID   string
-	spanReqs     []SpanRequest
-	endCalled    bool
-	endRequestID string
-	endStatus    string
-}
-
-func (m *mockTracer) StartTrace(_ context.Context, experimentID string) (string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.startCalled = true
-	m.startExpID = experimentID
-	return "tr-test-trace-id-1234567890abcdef", nil
+	spanReqs []SpanRequest
 }
 
 func (m *mockTracer) CreateSpan(_ context.Context, req SpanRequest) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.spanReqs = append(m.spanReqs, req)
 	return nil
 }
 
-func (m *mockTracer) EndTrace(_ context.Context, requestID, status string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.endCalled = true
-	m.endRequestID = requestID
-	m.endStatus = status
-	return nil
-}
-
-func (m *mockTracer) assertStartCalled(t *testing.T) {
-	t.Helper()
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.startCalled {
-		t.Error("StartTrace was not called")
-	}
-}
-
 func (m *mockTracer) assertSpanCount(t *testing.T, n int) {
 	t.Helper()
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	if len(m.spanReqs) != n {
 		t.Errorf("CreateSpan called %d times, want %d", len(m.spanReqs), n)
-	}
-}
-
-func (m *mockTracer) assertEndCalled(t *testing.T, wantStatus string) {
-	t.Helper()
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if !m.endCalled {
-		t.Error("EndTrace was not called")
-	}
-	if m.endStatus != wantStatus {
-		t.Errorf("end status = %q, want %q", m.endStatus, wantStatus)
 	}
 }
 
@@ -265,9 +216,7 @@ func TestCompleteWithTracer(t *testing.T) {
 			t.Errorf("reply = %q", reply)
 		}
 
-		tr.assertStartCalled(t)
 		tr.assertSpanCount(t, 1)
-		tr.assertEndCalled(t, "OK")
 
 		req := tr.spanReqs[0]
 		if req.Model != "gpt-4o-mini" {
@@ -284,6 +233,9 @@ func TestCompleteWithTracer(t *testing.T) {
 		}
 		if req.Error != "" {
 			t.Errorf("error = %q, want empty", req.Error)
+		}
+		if len(req.TraceID) != 32 {
+			t.Errorf("TraceID length = %d, want 32", len(req.TraceID))
 		}
 	})
 
@@ -310,9 +262,7 @@ func TestCompleteWithTracer(t *testing.T) {
 			t.Fatal("expected error")
 		}
 
-		tr.assertStartCalled(t)
 		tr.assertSpanCount(t, 1)
-		tr.assertEndCalled(t, "ERROR")
 
 		req := tr.spanReqs[0]
 		if req.Error == "" {
