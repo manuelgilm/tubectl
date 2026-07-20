@@ -13,11 +13,12 @@ import (
 )
 
 var answerCommentArgs struct {
-	videoID    string
-	commentID  string
+	videoID     string
+	commentID   string
 	autoApprove bool
 	onlyPrint   bool
 	promptFile  string
+	promptName  string
 }
 
 // botCmd represents the bot command
@@ -74,7 +75,22 @@ or --only-print to just display the reply without posting.`,
 		}
 
 		var resolvedTemplate string
-		if answerCommentArgs.promptFile != "" {
+		switch {
+		case answerCommentArgs.promptName != "":
+			mlflowClient, err := loadMlflowClient()
+			if err != nil {
+				return fmt.Errorf("loading MLflow client: %w", err)
+			}
+			registered, err := mlflowClient.GetPrompt(cmd.Context(), answerCommentArgs.promptName)
+			if err != nil {
+				return fmt.Errorf("fetching prompt %q from MLflow: %w", answerCommentArgs.promptName, err)
+			}
+			template := registered.PromptText()
+			if template == "" {
+				return fmt.Errorf("prompt %q has no prompt text in MLflow", answerCommentArgs.promptName)
+			}
+			resolvedTemplate = renderTemplate(template, commentText, transcriptText)
+		case answerCommentArgs.promptFile != "":
 			pf, err := prompt.LoadPromptFile(answerCommentArgs.promptFile)
 			if err != nil {
 				return fmt.Errorf("loading prompt file: %w", err)
@@ -87,7 +103,7 @@ or --only-print to just display the reply without posting.`,
 				return fmt.Errorf("rendering prompt: %w", err)
 			}
 			resolvedTemplate = rendered
-		} else {
+		default:
 			resolvedTemplate, err = resolveBotPrompt(cmd.Context(), cmd.ErrOrStderr(), commentText, transcriptText)
 			if err != nil {
 				return fmt.Errorf("resolving prompt: %w", err)
@@ -208,4 +224,5 @@ func init() {
 	answerCommentCmd.Flags().BoolVar(&answerCommentArgs.autoApprove, "auto-approve", false, "Skip confirmation prompt and post directly")
 	answerCommentCmd.Flags().BoolVar(&answerCommentArgs.onlyPrint, "only-print", false, "Generate the reply but do not post it")
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptFile, "prompt-file", "", "Path to a YAML prompt file (alternative to the default prompt)")
+	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptName, "prompt-name", "", "Prompt name in MLflow (takes precedence over --prompt-file)")
 }
