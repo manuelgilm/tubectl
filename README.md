@@ -13,10 +13,11 @@ GitHub Actions bot to automatically reply to new comments.
 | `OPENAI_API_KEY` | `tubectl ai` and `tubectl bot` commands |
 | `YOUTUBE_CLIENT_ID` | `tubectl auth youtube` (OAuth) |
 | `YOUTUBE_CLIENT_SECRET` | `tubectl auth youtube` (OAuth) |
-| `MLFLOW_USERNAME` | `tubectl auth mlflow` and `tubectl prompt` commands |
-| `MLFLOW_PASSWORD` | `tubectl auth mlflow` and `tubectl prompt` commands |
+| `MLFLOW_TRACKING_USERNAME` | `tubectl auth mlflow`, `tubectl prompt`, and MLflow tracing |
+| `MLFLOW_TRACKING_PASSWORD` | `tubectl auth mlflow`, `tubectl prompt`, and MLflow tracing |
 | `MLFLOW_SERVER_URL` | `tubectl auth mlflow`, `tubectl prompt`, and MLflow tracing (default `https://sandbox-mlflow.gilmanuel.com`) |
 | `MLFLOW_TRACING_ENABLED` | MLflow tracing — set to `true` to enable (`ai` / `bot` commands) |
+| `MLFLOW_EXPERIMENT_ID` | MLflow tracing — routes traces to a specific experiment (default `"0"`)
 
 ## Installation
 
@@ -96,7 +97,7 @@ tubectl auth mlflow --username <user> --password <pass> --force
 
 The OAuth redirect URI must be configured in the Google Cloud Console as `http://127.0.0.1:{port}/callback` (the port is chosen at runtime).
 
-**MLflow**: Saves credentials to `~/.tubectl/auth/mlflow.json`. Can also use `MLFLOW_USERNAME` and `MLFLOW_PASSWORD` environment variables instead of flags.
+**MLflow**: Saves credentials to `~/.tubectl/auth/mlflow.json`. Can also use `MLFLOW_TRACKING_USERNAME` and `MLFLOW_TRACKING_PASSWORD` environment variables instead of flags.
 
 ### `tubectl registry`
 
@@ -150,7 +151,7 @@ YouTube automations powered by AI.
 
 | Subcommand | Flags | Description |
 |---|---|---|
-| `answer-comment` | `--video-id`, `--comment-id`, `--auto-approve`, `--only-print`, `--prompt-file` | Generate an AI reply to a comment and optionally post it |
+| `answer-comment` | `--video-id`, `--comment-id`, `--auto-approve`, `--only-print`, `--prompt-file`, `--prompt-name` | Generate an AI reply to a comment and optionally post it |
 
 #### `bot answer-comment` flow
 
@@ -162,6 +163,7 @@ YouTube automations powered by AI.
 6. `--only-print`: just print the reply, don't post
 7. `--auto-approve`: skip the confirmation prompt and post immediately
 8. `--prompt-file`: use a custom YAML prompt file instead of the default prompt
+9. `--prompt-name`: fetch a prompt from the MLflow registry by name (takes precedence over `--prompt-file`)
 
 #### Custom Prompt Files
 
@@ -188,7 +190,7 @@ Query prompts from the MLflow prompt registry.
 | `list` | — | List all prompts from the MLflow registry (JSON) |
 | `get` | `--name` (required) | Get a specific prompt by name (JSON) |
 
-Requires authentication via `tubectl auth mlflow` or `MLFLOW_USERNAME`/`MLFLOW_PASSWORD` environment variables.
+Requires authentication via `tubectl auth mlflow` or `MLFLOW_TRACKING_USERNAME`/`MLFLOW_TRACKING_PASSWORD` environment variables.
 
 ### MLflow Tracing
 
@@ -209,8 +211,8 @@ export MLFLOW_TRACING_ENABLED=true
 export MLFLOW_SERVER_URL=http://localhost:5000   # optional, defaults to https://sandbox-mlflow.gilmanuel.com
 
 # Using environment variables:
-export MLFLOW_USERNAME=admin
-export MLFLOW_PASSWORD=secret
+export MLFLOW_TRACKING_USERNAME=admin
+export MLFLOW_TRACKING_PASSWORD=secret
 tubectl ai complete --query "Hello"
 
 # Or using saved credentials:
@@ -218,7 +220,7 @@ tubectl auth mlflow --username admin --password secret
 tubectl ai complete --query "Hello"
 ```
 
-Traces appear in the MLflow UI under experiment `0`. No tracing occurs when
+Traces appear in the MLflow UI under the experiment specified by `MLFLOW_EXPERIMENT_ID` (default `"0"`). No tracing occurs when
 `MLFLOW_TRACING_ENABLED` is unset or not `"true"`. Trace failures (network,
 server errors) are logged to stderr and never block the command.
 
@@ -341,7 +343,7 @@ The caption download endpoint requires the video to be owned by or accessible to
 
 ### Traces not appearing in MLflow
 
-Check that `MLFLOW_TRACING_ENABLED=true` is set. If it is, verify the MLflow server URL with `MLFLOW_SERVER_URL` — the default of `https://sandbox-mlflow.gilmanuel.com` is a remote server. Tracing uses the same credentials as `tubectl prompt` (env vars or `tubectl auth mlflow`).
+Check that `MLFLOW_TRACING_ENABLED=true` is set. If it is, verify the MLflow server URL with `MLFLOW_SERVER_URL` — the default of `https://sandbox-mlflow.gilmanuel.com` is a remote server. Tracing uses the same credentials as `tubectl prompt` (env vars or `tubectl auth mlflow`). If traces appear in the wrong experiment, set `MLFLOW_EXPERIMENT_ID` to the correct experiment ID.
 
 ## License
 
