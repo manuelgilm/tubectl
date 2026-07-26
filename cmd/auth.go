@@ -18,6 +18,7 @@ var (
 		forceLogin bool
 		username   string
 		password   string
+		serverURL  string
 	}
 )
 var authYoutubeCmd = &cobra.Command{
@@ -85,8 +86,9 @@ Use --force to overwrite existing credentials.`,
 
 		provider := prompt.NewMLflowProvider(credsPath)
 		return provider.Login(cmd.Context(), internal.Options{
-			Username: username,
-			Password: password,
+			Username:  username,
+			Password:  password,
+			ServerURL: authMlflowArgs.serverURL,
 		})
 	},
 }
@@ -104,5 +106,6 @@ func init() {
 	authCmd.AddCommand(authMlflowCmd)
 	authMlflowCmd.Flags().StringVar(&authMlflowArgs.username, "username", "", "MLflow username")
 	authMlflowCmd.Flags().StringVar(&authMlflowArgs.password, "password", "", "MLflow password")
+	authMlflowCmd.Flags().StringVar(&authMlflowArgs.serverURL, "server-url", "", "MLflow server URL (default: https://sandbox-mlflow.gilmanuel.com)")
 	authMlflowCmd.Flags().BoolVar(&authMlflowArgs.forceLogin, "force", false, "Force re-authentication even if credentials exist")
 }

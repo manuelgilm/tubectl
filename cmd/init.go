@@ -16,7 +16,7 @@ var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize the ~/.tubectl directory structure",
 	Long: `Creates the ~/.tubectl directory and all required subdirectories
-and files: config.json, registry.json, auth/, transcripts/, prompts/,
+and files: config.json, tubectl.db, auth/, prompts/,
 plus an emergency prompt file (prompts/yt-bot-answer-comment.yaml).
 
 Run this once before using other commands.`,
@@ -31,7 +31,6 @@ Run this once before using other commands.`,
 			return fmt.Errorf("error creating folder: %w", err)
 		}
 
-		// writing the files registry.json and config.json
 		err = writeConfigFile(tubehome)
 		if err != nil {
 			return fmt.Errorf("error creating config file %w", err)
@@ -49,11 +48,6 @@ Run this once before using other commands.`,
 		}
 
 		// Creating additional folders
-		err = createFolder(filepath.Join(tubehome, "transcripts"))
-		if err != nil {
-			return fmt.Errorf("error creating folder: %w", err)
-		}
-
 		err = createFolder(filepath.Join(tubehome, "auth"))
 		if err != nil {
 			return fmt.Errorf("error creating folder: %w", err)
@@ -66,17 +60,11 @@ Run this once before using other commands.`,
 // the config struct (defines the shape of config.json)
 type Config struct {
 	OpenAI    OpenAIConfig    `json:"openai"`
-	Prompt    PromptConfig    `json:"prompt"`
 	BotPrompt BotPromptConfig `json:"bot_prompt"`
 }
 
 type OpenAIConfig struct {
-	APIKey  string `json:"api_key"`
-	BaseURL string `json:"base_url"`
-}
-
-type PromptConfig struct {
-	ServerURL string `json:"server_url"`
+	APIKey string `json:"api_key"`
 }
 
 type BotPromptConfig struct {
@@ -96,6 +84,12 @@ func createFolder(path string) error {
 	return nil
 }
 func writeConfigFile(path string) error {
+	configPath := filepath.Join(path, "config.json")
+	if _, err := os.Stat(configPath); err == nil {
+		fmt.Println("config.json already exists, skipping")
+		return nil
+	}
+
 	cfg := Config{
 		BotPrompt: BotPromptConfig{
 			AnswerCommentModel: "yt-bot-answer-comment",
@@ -107,11 +101,17 @@ func writeConfigFile(path string) error {
 		return fmt.Errorf("error with Marshal: %w", err)
 	}
 
-	return os.WriteFile(filepath.Join(path, "config.json"), data, 0644)
+	return os.WriteFile(configPath, data, 0644)
 }
 
 func writeEmergencyPrompt(path string) error {
 	dir := filepath.Join(path, "prompts")
+	promptPath := filepath.Join(dir, "yt-bot-answer-comment.yaml")
+	if _, err := os.Stat(promptPath); err == nil {
+		fmt.Println("emergency prompt already exists, skipping")
+		return nil
+	}
+
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ Video transcript context:
 		return err
 	}
 
-	return os.WriteFile(filepath.Join(dir, "yt-bot-answer-comment.yaml"), data, 0644)
+	return os.WriteFile(promptPath, data, 0644)
 }
 
 func init() {

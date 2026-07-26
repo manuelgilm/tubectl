@@ -27,7 +27,7 @@ Requires --query. Optionally set --model to override the default
 			return fmt.Errorf("loading openai client: %w", err)
 		}
 
-		messages, err := prompt.BuildMessagesYTBot(completeArgs.query, "Video without context")
+		messages, err := prompt.BuildMessagesYTBot(completeArgs.query, "")
 		if err != nil {
 			return fmt.Errorf("building messages: %w", err)
 		}
