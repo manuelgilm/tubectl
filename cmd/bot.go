@@ -7,9 +7,9 @@ import (
 	// "path/filepath"
 	// "strings"
 	"github.com/spf13/cobra"
-	// "tubectl/internal/ai"
-	// "tubectl/internal/prompt"
-	// "tubectl/internal/youtube"
+	// "github.com/manuelgilm/tubectl/internal/ai"
+	// "github.com/manuelgilm/tubectl/internal/prompt"
+	// "github.com/manuelgilm/tubectl/internal/youtube"
 )
 
 var answerCommentArgs struct {

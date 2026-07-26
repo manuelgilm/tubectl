@@ -1,6 +1,6 @@
 package main
 
-import "tubectl/cmd"
+import "github.com/manuelgilm/tubectl/cmd"
 
 func main() {
 	cmd.Execute()

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"github.com/spf13/cobra"
-	"tubectl/internal/registry"
+	"github.com/manuelgilm/tubectl/internal/registry"
 	"encoding/json"
 )
 

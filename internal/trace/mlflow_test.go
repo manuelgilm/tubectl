@@ -13,7 +13,7 @@ import (
 
 	otlpcollectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 
-	"tubectl/internal/ai"
+	"github.com/manuelgilm/tubectl/internal/ai"
 )
 
 func TestCreateSpan(t *testing.T) {

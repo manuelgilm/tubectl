@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/spf13/cobra"
-	"tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/prompt"
 )
 
 var completeArgs struct {

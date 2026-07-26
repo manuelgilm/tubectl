@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/prompt"
 )
 
 func TestLoadMlflowClient_withEnvVars(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"tubectl/internal"
+	"github.com/manuelgilm/tubectl/internal"
 )
 
 type Credentials struct {

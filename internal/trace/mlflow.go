@@ -17,7 +17,7 @@ import (
 	otlpcommon "go.opentelemetry.io/proto/otlp/common/v1"
 	otlptrace "go.opentelemetry.io/proto/otlp/trace/v1"
 
-	"tubectl/internal/ai"
+	"github.com/manuelgilm/tubectl/internal/ai"
 )
 
 type MLflowTracer struct {

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"tubectl/internal/registry"
+	"github.com/manuelgilm/tubectl/internal/registry"
 )
 
 func TestCreateFolder(t *testing.T) {

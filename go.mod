@@ -1,4 +1,4 @@
-module tubectl
+module github.com/manuelgilm/tubectl
 
 go 1.26.3
 
