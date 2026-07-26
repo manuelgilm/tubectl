@@ -41,15 +41,6 @@ jobs:
       - name: Build tubectl
         run: go build -o tubectl .
 
-      - name: Restore OAuth token
-        run: |
-          mkdir -p ~/.tubectl/auth
-          echo "${{ secrets.TUBECTL_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.json
-          chmod 600 ~/.tubectl/auth/youtube.json
-
-      - name: Sync registered videos into local registry
-        run: ./tubectl registry sync --yaml registered_videos.yaml
-
       - name: Cache tubectl data
         uses: actions/cache@v4
         with:
@@ -57,6 +48,18 @@ jobs:
           key: tubectl-${{ hashFiles('registered_videos.yaml') }}
           restore-keys: |
             tubectl-
+
+      - name: Restore OAuth token
+        run: |
+          mkdir -p ~/.tubectl/auth
+          echo "${{ secrets.TUBECTL_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.json
+          chmod 600 ~/.tubectl/auth/youtube.json
+
+      - name: Register videos in DB
+        run: |
+          for VID in $(yq -r '.videos[]' registered_videos.yaml); do
+            ./tubectl registry add --video-id "$VID" || true
+          done
 
       - name: Fetch new comments
         id: fetch
