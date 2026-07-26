@@ -8,10 +8,10 @@ import (
 	"os"
 	"strings"
 	"path/filepath"
-	"tubectl/internal/ai"
-	"tubectl/internal/prompt"
-	"tubectl/internal/trace"
-	"tubectl/internal/youtube"
+	"github.com/manuelgilm/tubectl/internal/ai"
+	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/trace"
+	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
 )
 

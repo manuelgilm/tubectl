@@ -3,9 +3,9 @@ package cmd
 import (
 	"os"
 	"path/filepath"
-	"tubectl/internal"
-	"tubectl/internal/prompt"
-	"tubectl/internal/youtube"
+	"github.com/manuelgilm/tubectl/internal"
+	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
 	"fmt"
 )

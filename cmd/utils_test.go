@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"tubectl/internal/prompt"
-	"tubectl/internal/youtube"
+	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/youtube"
 )
 
 func TestPromptFileRender(t *testing.T) {

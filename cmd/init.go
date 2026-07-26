@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"tubectl/internal/registry"
-	"tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/registry"
+	"github.com/manuelgilm/tubectl/internal/prompt"
 	"gopkg.in/yaml.v3"
 	"github.com/spf13/cobra"
 )

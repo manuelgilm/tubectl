@@ -3,7 +3,7 @@ package prompt
 import (
 	"fmt"
 
-	"tubectl/internal/ai"
+	"github.com/manuelgilm/tubectl/internal/ai"
 )
 
 func DefaultBotPromptText(commentText, transcriptText string) string {

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"tubectl/internal"
+	"github.com/manuelgilm/tubectl/internal"
 )
 
 func TestSaveAndLoadCredentials(t *testing.T) {
