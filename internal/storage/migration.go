@@ -29,6 +29,10 @@ var migrations = []string{
 		cached_at  TEXT NOT NULL,
 		UNIQUE(video_id, language)
 	)`,
+	`CREATE TRIGGER IF NOT EXISTS after_delete_video AFTER DELETE ON videos
+	BEGIN
+		DELETE FROM transcripts WHERE video_id = OLD.id;
+	END`,
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {

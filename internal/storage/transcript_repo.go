@@ -41,12 +41,12 @@ func (r *TranscriptRepo) Save(ctx context.Context, t *StoredTranscript) error {
 	return nil
 }
 
-func (r *TranscriptRepo) Load(ctx context.Context, videoID string) (*StoredTranscript, error) {
+func (r *TranscriptRepo) Load(ctx context.Context, videoID, language string) (*StoredTranscript, error) {
 	t := &StoredTranscript{}
 	var cachedAt string
 	err := r.db.QueryRowContext(ctx, `
 		SELECT video_id, language, track_kind, caption_id, content, lines, cached_at
-		FROM transcripts WHERE video_id = ?`, videoID).Scan(
+		FROM transcripts WHERE video_id = ? AND language = ?`, videoID, language).Scan(
 		&t.VideoID, &t.Language, &t.TrackKind, &t.CaptionID, &t.Content, &t.Lines, &cachedAt,
 	)
 	if err == sql.ErrNoRows {

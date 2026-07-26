@@ -233,16 +233,21 @@ func TestVideoRepo_List(t *testing.T) {
 		}
 	})
 
-	t.Run("order by registered_at desc", func(t *testing.T) {
+	t.Run("order by published_at desc, registered_at desc", func(t *testing.T) {
 		db := newTestDB(t)
 		repo := NewVideoRepo(db)
 
-		repo.Add(context.Background(), Video{ID: "a", Title: "A", RegisteredAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), UpdatedAt: time.Now()})
-		repo.Add(context.Background(), Video{ID: "b", Title: "B", RegisteredAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), UpdatedAt: time.Now()})
+		now := time.Now()
+		repo.Add(context.Background(), Video{ID: "a", Title: "A", PublishedAt: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC), RegisteredAt: now, UpdatedAt: now})
+		repo.Add(context.Background(), Video{ID: "b", Title: "B", PublishedAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), RegisteredAt: now, UpdatedAt: now})
+		repo.Add(context.Background(), Video{ID: "c", Title: "C", PublishedAt: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC), RegisteredAt: now.Add(-time.Hour), UpdatedAt: now})
 
 		vs, _ := repo.List(context.Background())
-		if vs[0].ID != "b" || vs[1].ID != "a" {
-			t.Errorf("expected b first, got %+v", vs)
+		if vs[0].ID != "b" {
+			t.Errorf("expected b first (newest published), got %s", vs[0].ID)
+		}
+		if vs[1].ID != "a" || vs[2].ID != "c" {
+			t.Errorf("expected a then c (tied published, newer registered first), got %s %s", vs[1].ID, vs[2].ID)
 		}
 	})
 }

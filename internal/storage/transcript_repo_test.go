@@ -37,7 +37,7 @@ func TestTranscriptRepo_SaveLoad(t *testing.T) {
 			t.Fatalf("Save: %v", err)
 		}
 
-		loaded, err := repo.Load(context.Background(), "vid1")
+		loaded, err := repo.Load(context.Background(), "vid1", "en")
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
@@ -67,19 +67,51 @@ func TestTranscriptRepo_SaveLoad(t *testing.T) {
 			t.Fatalf("Save overwrite: %v", err)
 		}
 
-		loaded, _ := repo.Load(context.Background(), "vid1")
+		loaded, _ := repo.Load(context.Background(), "vid1", "en")
 		if loaded.Content != "updated content" {
 			t.Errorf("content = %q, want %q", loaded.Content, "updated content")
 		}
 	})
 
 	t.Run("load not found", func(t *testing.T) {
-		loaded, err := repo.Load(context.Background(), "nonexistent")
+		loaded, err := repo.Load(context.Background(), "nonexistent", "en")
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
 		if loaded != nil {
 			t.Fatal("expected nil for missing transcript")
+		}
+	})
+
+	t.Run("multiple languages per video", func(t *testing.T) {
+		en := &StoredTranscript{
+			VideoID:  "vid1",
+			Language: "en",
+			Content:  "hello world",
+			Lines:    `[]`,
+			CachedAt: time.Now(),
+		}
+		es := &StoredTranscript{
+			VideoID:  "vid1",
+			Language: "es",
+			Content:  "hola mundo",
+			Lines:    `[]`,
+			CachedAt: time.Now(),
+		}
+		if err := repo.Save(context.Background(), en); err != nil {
+			t.Fatalf("Save en: %v", err)
+		}
+		if err := repo.Save(context.Background(), es); err != nil {
+			t.Fatalf("Save es: %v", err)
+		}
+
+		loadedEn, _ := repo.Load(context.Background(), "vid1", "en")
+		loadedEs, _ := repo.Load(context.Background(), "vid1", "es")
+		if loadedEn.Content != "hello world" {
+			t.Errorf("en content = %q", loadedEn.Content)
+		}
+		if loadedEs.Content != "hola mundo" {
+			t.Errorf("es content = %q", loadedEs.Content)
 		}
 	})
 }
@@ -101,7 +133,7 @@ func TestTranscriptRepo_Delete(t *testing.T) {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	loaded, _ := repo.Load(context.Background(), "vid1")
+	loaded, _ := repo.Load(context.Background(), "vid1", "en")
 	if loaded != nil {
 		t.Fatal("expected nil after delete")
 	}

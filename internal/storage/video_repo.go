@@ -53,7 +53,7 @@ func (r *VideoRepo) Get(ctx context.Context, id string) (*Video, error) {
 func (r *VideoRepo) List(ctx context.Context) ([]Video, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, title, description, channel_id, published_at, registered_at, updated_at
-		FROM videos ORDER BY registered_at DESC`)
+		FROM videos ORDER BY published_at DESC, registered_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list videos: %w", err)
 	}
