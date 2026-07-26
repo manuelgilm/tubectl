@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/spf13/cobra"
-	"github.com/manuelgilm/tubectl/internal/youtube"
+	"github.com/manuelgilm/tubectl/internal/storage"
 )
 var (
 	getVideoArgs struct {
@@ -52,18 +52,30 @@ timestamps. Results are cached locally for faster subsequent access.
 Use --language to select a specific language (default: en).
 Use --no-cache to bypass the cache and fetch fresh data.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		db, err := openDB()
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		trepo := storage.NewTranscriptRepo(db)
+
 		if !getTranscriptArgs.noCache {
-			cached, err := youtube.LoadCachedTranscript(getTranscriptArgs.videoID)
+			st, err := trepo.Load(cmd.Context(), getTranscriptArgs.videoID)
 			if err != nil {
-				return err 
+				return err
 			}
-			if cached != nil {
+			if st != nil {
+				t, err := storedToTranscript(st)
+				if err != nil {
+					return err
+				}
 				fmt.Fprintf(cmd.ErrOrStderr(), "Using Cached Transcript (language: %s, kind: %s)\n\n",
-				cached.Language, cached.TrackKind)
-				printTranscript(cached) 
+					t.Language, t.TrackKind)
+				printTranscript(t)
 				return nil
 			}
 		}
+
 		client, err := loadClient(cmd.Context())
 		if err != nil {
 			return err
@@ -74,17 +86,18 @@ Use --no-cache to bypass the cache and fetch fresh data.`,
 			return err
 		}
 
-		if err := youtube.SaveCachedTranscript(transcript); err != nil {
-			// Non-fatal: warn but still print the transcript.
+		st, err := transcriptToStored(transcript)
+		if err != nil {
+			return err
+		}
+		if err := trepo.Save(cmd.Context(), st); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not cache transcript: %v\n", err)
 		} else {
-			path, _ := youtube.TranscriptCachePath(getTranscriptArgs.videoID)
-			fmt.Fprintf(cmd.ErrOrStderr(), "Transcript cached to %s\n\n", path)
+			fmt.Fprintf(cmd.ErrOrStderr(), "Transcript cached to local database\n\n")
 		}
 
 		printTranscript(transcript)
 		return nil
-
 	},
 }
 var getCommentsCmd = &cobra.Command{
