@@ -22,6 +22,10 @@ GitHub Actions bot to automatically reply to new comments.
 ## Installation
 
 ```bash
+# Option 1: Install directly from GitHub (requires Go)
+go install github.com/manuelgilm/tubectl@latest
+
+# Option 2: Build from source
 make build       # run tests, then compile into ./bin/tubectl
 make install     # run tests, then install to $GOPATH/bin/tubectl
 ```
