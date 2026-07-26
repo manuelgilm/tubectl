@@ -47,6 +47,9 @@ jobs:
           echo "${{ secrets.TUBECTL_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.json
           chmod 600 ~/.tubectl/auth/youtube.json
 
+      - name: Sync registered videos into local registry
+        run: ./tubectl registry sync --yaml registered_videos.yaml
+
       - name: Cache transcripts
         uses: actions/cache@v4
         with:
