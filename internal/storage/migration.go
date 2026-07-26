@@ -19,6 +19,16 @@ var migrations = []string{
 		registered_at TEXT NOT NULL,
 		updated_at    TEXT NOT NULL
 	)`,
+	`CREATE TABLE IF NOT EXISTS transcripts (
+		video_id   TEXT NOT NULL REFERENCES videos(id),
+		language   TEXT NOT NULL DEFAULT 'en',
+		track_kind TEXT NOT NULL DEFAULT '',
+		caption_id TEXT NOT NULL DEFAULT '',
+		content    TEXT NOT NULL,
+		lines      TEXT NOT NULL,
+		cached_at  TEXT NOT NULL,
+		UNIQUE(video_id, language)
+	)`,
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
