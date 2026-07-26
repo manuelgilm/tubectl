@@ -1,24 +1,19 @@
 package cmd
 
 import (
-	// "context"
 	"fmt"
-	// "io"
-	// "path/filepath"
-	// "strings"
 	"github.com/spf13/cobra"
-	// "github.com/manuelgilm/tubectl/internal/ai"
-	// "github.com/manuelgilm/tubectl/internal/prompt"
-	// "github.com/manuelgilm/tubectl/internal/youtube"
 )
 
 var answerCommentArgs struct {
-	videoID     string
-	commentID   string
-	autoApprove bool
-	onlyPrint   bool
-	promptFile  string
-	promptName  string
+	videoID            string
+	commentID          string
+	autoApprove        bool
+	onlyPrint          bool
+	promptFile         string
+	promptName         string
+	transcriptLanguage string
+	model              string
 }
 
 // botCmd represents the bot command
@@ -37,11 +32,14 @@ By default the generated reply is shown and the user is prompted for
 confirmation before posting. Use --auto-approve to skip the prompt
 or --only-print to just display the reply without posting.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var err error
-		transcript, err := GetTranscriptText(cmd, answerCommentArgs.videoID)
-		if err != nil {
-			return err
-		}
+	var err error
+	transcript, err := GetTranscriptText(cmd, answerCommentArgs.videoID, answerCommentArgs.transcriptLanguage)
+	if err != nil {
+		return err
+	}
+	if transcript == "" {
+		fmt.Fprintln(cmd.ErrOrStderr(), "Warning: transcript not available, AI reply will have no video context")
+	}
 		commentText, err := ResolveComment(cmd, answerCommentArgs.commentID)
 		if err != nil {
 			return err
@@ -50,7 +48,7 @@ or --only-print to just display the reply without posting.`,
 		if err != nil {
 			return err
 		}
-		reply, err := GenerateAnswer(cmd, resolvedTemplate)
+		reply, err := GenerateAnswer(cmd, resolvedTemplate, answerCommentArgs.model)
 		if err != nil {
 			return err
 		}
@@ -77,4 +75,6 @@ func init() {
 	answerCommentCmd.Flags().BoolVar(&answerCommentArgs.onlyPrint, "only-print", false, "Generate the reply but do not post it")
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptFile, "prompt-file", "", "Path to a YAML prompt file (alternative to the default prompt)")
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptName, "prompt-name", "", "Prompt name in MLflow (takes precedence over --prompt-file)")
+	answerCommentCmd.Flags().StringVar(&answerCommentArgs.transcriptLanguage, "transcript-language", "en", "Language of the transcript (e.g. en, es)")
+	answerCommentCmd.Flags().StringVar(&answerCommentArgs.model, "model", "", "OpenAI model name (default: gpt-4o-mini)")
 }

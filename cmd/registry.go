@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"fmt"
-	"path/filepath"
-	"github.com/spf13/cobra"
-	"github.com/manuelgilm/tubectl/internal/registry"
 	"encoding/json"
+	"fmt"
+	"time"
+	"github.com/spf13/cobra"
+	"github.com/manuelgilm/tubectl/internal/storage"
 )
 
 var (
@@ -21,55 +21,67 @@ var (
 		title   string
 	}
 )
+
 var registryUpdateCmd = &cobra.Command{
-	Use: "update",
+	Use:   "update",
 	Short: "Update a video's title in the registry",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		home, err := TubeCtlHome()
+		db, err := openDB()
 		if err != nil {
 			return err
 		}
-		reg, err := registry.LoadRegistry(filepath.Join(home, "registry.json"))
+		defer db.Close()
+
+		repo := storage.NewVideoRepo(db)
+		v, err := repo.Update(cmd.Context(), regUpdateArgs.videoID, regUpdateArgs.title)
 		if err != nil {
 			return err
 		}
-		if !registry.UpdateVideo(reg, regUpdateArgs.videoID, regUpdateArgs.title){
+		if v == nil {
 			return fmt.Errorf("video %s not found", regUpdateArgs.videoID)
 		}
-		return registry.SaveRegistry(home, reg)
+		return nil
 	},
 }
+
 var registryDeleteCmd = &cobra.Command{
-	Use: "delete",
+	Use:   "delete",
 	Short: "Remove a video from the registry",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		home, err := TubeCtlHome()
+		db, err := openDB()
 		if err != nil {
 			return err
 		}
-		reg, err := registry.LoadRegistry(filepath.Join(home, "registry.json"))
+		defer db.Close()
+
+		repo := storage.NewVideoRepo(db)
+		ok, err := repo.Delete(cmd.Context(), regDeleteArgs.videoID)
 		if err != nil {
 			return err
 		}
-		if !registry.RemoveVideo(reg, regDeleteArgs.videoID) {
+		if !ok {
 			return fmt.Errorf("video %s not found in registry", regDeleteArgs.videoID)
 		}
-		return registry.SaveRegistry(home,reg)
+		return nil
 	},
 }
+
 var registryListCmd = &cobra.Command{
-	Use: "list",
+	Use:   "list",
 	Short: "List all registered videos",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		home, err := TubeCtlHome()
-		if err != nil {
-			return err 
-		}
-		reg, err := registry.LoadRegistry(filepath.Join(home, "registry.json"))
+		db, err := openDB()
 		if err != nil {
 			return err
 		}
-		data, err := json.MarshalIndent(reg, "", "  ")
+		defer db.Close()
+
+		repo := storage.NewVideoRepo(db)
+		vs, err := repo.List(cmd.Context())
+		if err != nil {
+			return err
+		}
+		data, err := json.MarshalIndent(vs, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -77,25 +89,28 @@ var registryListCmd = &cobra.Command{
 		return nil
 	},
 }
+
 var registryAddCmd = &cobra.Command{
-	Use: "add",
+	Use:   "add",
 	Short: "Add a video to the registry",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		home, err := TubeCtlHome()
+		db, err := openDB()
 		if err != nil {
 			return err
 		}
-		reg, err := registry.LoadRegistry(filepath.Join(home, "registry.json"))
-		if err != nil {
-			return err
+		defer db.Close()
+
+		repo := storage.NewVideoRepo(db)
+		v := storage.Video{
+			ID:           regAddArgs.videoID,
+			Title:        regAddArgs.title,
+			RegisteredAt: time.Now(),
+			UpdatedAt:    time.Now(),
 		}
-		err = registry.AddVideo(reg, regAddArgs.videoID, regAddArgs.title)
-		if err != nil {
-			return err
-		}
-		return registry.SaveRegistry(home, reg)
+		return repo.Add(cmd.Context(), v)
 	},
 }
+
 var registryCmd = &cobra.Command{
 	Use:   "registry",
 	Short: "Manage the local video registry",
@@ -110,7 +125,7 @@ func init() {
 	registryAddCmd.Flags().StringVar(&regAddArgs.videoID, "video-id", "", "YouTube Video ID")
 	registryAddCmd.MarkFlagRequired("video-id")
 	registryAddCmd.Flags().StringVar(&regAddArgs.title, "title", "", "YouTube Video Title")
-	
+
 	registryCmd.AddCommand(registryListCmd)
 	registryCmd.AddCommand(registryDeleteCmd)
 	registryDeleteCmd.Flags().StringVar(&regDeleteArgs.videoID, "video-id", "", "YouTube Video ID")
@@ -121,4 +136,5 @@ func init() {
 	registryUpdateCmd.MarkFlagRequired("video-id")
 	registryUpdateCmd.Flags().StringVar(&regUpdateArgs.title, "title", "", "YouTube Video Title")
 	registryUpdateCmd.MarkFlagRequired("title")
+
 }

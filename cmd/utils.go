@@ -2,32 +2,29 @@ package cmd
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"path/filepath"
+	"strings"
 	"github.com/manuelgilm/tubectl/internal/ai"
 	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/storage"
 	"github.com/manuelgilm/tubectl/internal/trace"
 	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
 )
 
-func printTranscript(t *youtube.Transcript) {
-	for _, line := range t.Lines {
-		minutes := int(line.Start) / 60
-		seconds := int(line.Start) % 60
-		fmt.Printf("[%02d:%02d] %s\n", minutes, seconds, line.Text)
-	}
-}
-
 // Function to get the tubectl home directoy
 func TubeCtlHome() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("getting home directory: %w", err)
+	}
+	if home == "" {
+		return "", fmt.Errorf("home directory is empty")
 	}
 	return filepath.Join(home, ".tubectl"), nil
 
@@ -35,12 +32,17 @@ func TubeCtlHome() (string, error) {
 
 func loadOpenAIClient(ctx context.Context, model string) (*ai.Client, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		if cfg, err := loadConfig(); err == nil {
+			apiKey = cfg.OpenAI.APIKey
+		}
+	}
 
 	if model == "" {
 		model = "gpt-4o-mini"
 	}
 	if apiKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY not found in environment variables")
+		return nil, fmt.Errorf("OPENAI_API_KEY not found in environment variables or config.json")
 	}
 	c := ai.NewClient(apiKey, model)
 	if tracer := newMLflowTracer(ctx); tracer != nil {
@@ -142,40 +144,6 @@ func loadClient(ctx context.Context) (*youtube.Client, error) {
 }
 
 
-func GetTranscriptText(cmd *cobra.Command, videoID string) (string, error) {
-	transcript, err := youtube.LoadCachedTranscript(videoID)
-	if err != nil {
-		return "", fmt.Errorf("loading cached transcript: %w", err)
-	}
-
-	if transcript == nil {
-		// There is no cached transcript
-		client, err := loadClient(cmd.Context())
-		if err != nil {
-			return "", err
-		}
-		t, err := client.DownloadTranscript(cmd.Context(), answerCommentArgs.videoID, "")
-		if err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: transcript not available: %v\n", err)
-		} else {
-			transcript = t
-			if saveErr := youtube.SaveCachedTranscript(transcript); saveErr != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not cache transcript: %v\n", saveErr)
-			}
-		}
-	}
-
-	var transcriptText string
-	if transcript != nil {
-		var b strings.Builder
-		for _, line := range transcript.Lines {
-			b.WriteString(line.Text)
-			b.WriteString(" ")
-		}
-		transcriptText = b.String()
-	}
-	return transcriptText, nil
-}
 func ResolvePromptTemplate(cmd *cobra.Command, promptName, promptFile, commentText, transcriptText string) (string, error) {
 
 	var resolvedTemplate string
@@ -245,11 +213,17 @@ func resolveBotPrompt(cmd *cobra.Command, w io.Writer, commentText, transcriptTe
 	}
 
 	mlflowClient, err := loadMlflowClient()
-	if err == nil {
+	if err != nil {
+		fmt.Fprintf(w, "Warning: MLflow client unavailable (%v), falling back to local prompt\n", err)
+	} else {
 		registered, err := mlflowClient.GetPrompt(cmd.Context(), modelName)
-		if err == nil {
+		if err != nil {
+			fmt.Fprintf(w, "Warning: MLflow prompt %q fetch failed (%v), falling back to local prompt\n", modelName, err)
+		} else {
 			template := registered.PromptText()
-			if template != "" {
+			if template == "" {
+				fmt.Fprintf(w, "Warning: MLflow prompt %q has empty text, falling back to local prompt\n", modelName)
+			} else {
 				rendered := renderTemplate(template, commentText, transcriptText)
 				return rendered, nil
 			}
@@ -267,6 +241,9 @@ func tryLocalPrompt(cfg Config, commentText, transcriptText string) (string, err
 
 	modelName := cfg.BotPrompt.AnswerCommentModel
 	if modelName == "" {
+		modelName = "yt-bot-answer-comment"
+	}
+	if strings.ContainsAny(modelName, "/\\") {
 		modelName = "yt-bot-answer-comment"
 	}
 
@@ -298,12 +275,12 @@ func ResolveComment(cmd *cobra.Command, commentID string) (string, error){
 	return commentText, nil
 }
 
-func GenerateAnswer(cmd *cobra.Command, resolvedTemplate string) (string, error) {
+func GenerateAnswer(cmd *cobra.Command, resolvedTemplate, model string) (string, error) {
 	messages := []ai.Message{
 		{Role: "system", Content: resolvedTemplate},
 	}
 	
-	aiClient, err := loadOpenAIClient(cmd.Context(), "")
+	aiClient, err := loadOpenAIClient(cmd.Context(), model)
 	if err != nil {
 		return "", fmt.Errorf("loading AI client: %w", err)
 	}
@@ -343,7 +320,19 @@ func replyComment(cmd *cobra.Command, commentID, reply string, autoApprove bool)
 
 
 func renderTemplate(template, commentText, transcriptText string) string {
-	result := strings.ReplaceAll(template, "{{comment}}", commentText)
-	result = strings.ReplaceAll(result, "{{transcript}}", transcriptText)
-	return result
+	r := strings.NewReplacer("{comment}", commentText, "{transcript}", transcriptText)
+	return r.Replace(template)
+}
+
+func openDB() (*sql.DB, error) {
+	home, err := TubeCtlHome()
+	if err != nil {
+		return nil, err
+	}
+	dbPath := filepath.Join(home, "tubectl.db")
+	db, err := storage.New(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening database: %w", err)
+	}
+	return db, nil
 }
