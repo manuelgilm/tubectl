@@ -146,38 +146,38 @@ func loadClient(ctx context.Context) (*youtube.Client, error) {
 
 
 func GetTranscriptText(cmd *cobra.Command, videoID string) (string, error) {
-	transcript, err := youtube.LoadCachedTranscript(videoID)
+	db, err := openDB()
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+
+	repo := storage.NewTranscriptRepo(db)
+	st, err := repo.Load(cmd.Context(), videoID)
 	if err != nil {
 		return "", fmt.Errorf("loading cached transcript: %w", err)
 	}
 
-	if transcript == nil {
-		// There is no cached transcript
+	if st == nil {
 		client, err := loadClient(cmd.Context())
 		if err != nil {
 			return "", err
 		}
-		t, err := client.DownloadTranscript(cmd.Context(), answerCommentArgs.videoID, "")
+		t, err := client.DownloadTranscript(cmd.Context(), videoID, "")
 		if err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: transcript not available: %v\n", err)
-		} else {
-			transcript = t
-			if saveErr := youtube.SaveCachedTranscript(transcript); saveErr != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not cache transcript: %v\n", saveErr)
-			}
+			return "", nil
+		}
+		st, err = transcriptToStored(t)
+		if err != nil {
+			return "", err
+		}
+		if saveErr := repo.Save(cmd.Context(), st); saveErr != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not cache transcript: %v\n", saveErr)
 		}
 	}
 
-	var transcriptText string
-	if transcript != nil {
-		var b strings.Builder
-		for _, line := range transcript.Lines {
-			b.WriteString(line.Text)
-			b.WriteString(" ")
-		}
-		transcriptText = b.String()
-	}
-	return transcriptText, nil
+	return st.Content, nil
 }
 func ResolvePromptTemplate(cmd *cobra.Command, promptName, promptFile, commentText, transcriptText string) (string, error) {
 
@@ -345,6 +345,41 @@ func replyComment(cmd *cobra.Command, commentID, reply string, autoApprove bool)
 }
 
 
+func transcriptToStored(t *youtube.Transcript) (*storage.StoredTranscript, error) {
+	linesJSON, err := json.Marshal(t.Lines)
+	if err != nil {
+		return nil, fmt.Errorf("marshal transcript lines: %w", err)
+	}
+	var content strings.Builder
+	for _, l := range t.Lines {
+		content.WriteString(l.Text)
+		content.WriteString(" ")
+	}
+	return &storage.StoredTranscript{
+		VideoID:   t.VideoID,
+		Language:  t.Language,
+		TrackKind: t.TrackKind,
+		CaptionID: t.CaptionID,
+		Content:   strings.TrimSpace(content.String()),
+		Lines:     string(linesJSON),
+		CachedAt:  time.Now(),
+	}, nil
+}
+
+func storedToTranscript(st *storage.StoredTranscript) (*youtube.Transcript, error) {
+	var lines []youtube.TranscriptLine
+	if err := json.Unmarshal([]byte(st.Lines), &lines); err != nil {
+		return nil, fmt.Errorf("unmarshal transcript lines: %w", err)
+	}
+	return &youtube.Transcript{
+		VideoID:   st.VideoID,
+		Language:  st.Language,
+		TrackKind: st.TrackKind,
+		CaptionID: st.CaptionID,
+		Lines:     lines,
+	}, nil
+}
+
 func renderTemplate(template, commentText, transcriptText string) string {
 	result := strings.ReplaceAll(template, "{{comment}}", commentText)
 	result = strings.ReplaceAll(result, "{{transcript}}", transcriptText)
@@ -362,6 +397,10 @@ func openDB() (*sql.DB, error) {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
 	if err := maybeImportJSON(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := maybeImportTranscripts(db); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -424,5 +463,54 @@ func maybeImportJSON(db *sql.DB) error {
 		return fmt.Errorf("renaming registry.json: %w", err)
 	}
 	fmt.Printf("Imported %d videos from registry.json into tubectl.db\n", len(reg.Videos))
+	return nil
+}
+
+func maybeImportTranscripts(db *sql.DB) error {
+	home, err := TubeCtlHome()
+	if err != nil {
+		return err
+	}
+	transcriptsDir := filepath.Join(home, "transcripts")
+	entries, err := os.ReadDir(transcriptsDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("reading transcripts dir: %w", err)
+	}
+
+	trepo := storage.NewTranscriptRepo(db)
+	var imported int
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		path := filepath.Join(transcriptsDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: skipping corrupt transcript %s: %v\n", entry.Name(), err)
+			continue
+		}
+		var t youtube.Transcript
+		if err := json.Unmarshal(data, &t); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: skipping corrupt transcript %s: %v\n", entry.Name(), err)
+			continue
+		}
+		st, err := transcriptToStored(&t)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: skipping transcript %s: %v\n", entry.Name(), err)
+			continue
+		}
+		if err := trepo.Save(context.Background(), st); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not save transcript %s: %v\n", entry.Name(), err)
+			continue
+		}
+		os.Rename(path, path+".migrated")
+		imported++
+	}
+	if imported > 0 {
+		fmt.Printf("Imported %d transcripts into tubectl.db\n", imported)
+	}
 	return nil
 }
