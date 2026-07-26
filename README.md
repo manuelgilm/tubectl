@@ -71,9 +71,8 @@ tubectl bot answer-comment --video-id dQw4w9WgXcQ --comment-id Ug... --auto-appr
 
 ```
 ~/.tubectl/
-  registry.json     # Registered video metadata
+  tubectl.db        # SQLite database (videos, transcripts)
   config.json       # CLI configuration
-  transcripts/      # Cached transcripts by video ID
   auth/             # OAuth tokens and credentials per service
   prompts/          # YAML prompt templates (optional)
 ```
@@ -84,7 +83,7 @@ Created on first use with `tubectl init`.
 
 ### `tubectl init`
 
-Creates the `~/.tubectl/` directory tree (registry, config, transcripts, auth, prompts).
+Creates the `~/.tubectl/` directory tree (config, tubectl.db, auth, prompts).
 
 ### `tubectl auth`
 
@@ -93,8 +92,8 @@ Authentication providers for YouTube and MLflow.
 ```
 tubectl auth youtube           # Authenticate interactively (if no valid token exists)
 tubectl auth youtube --force   # Force re-authentication even if a token is valid
-tubectl auth mlflow --username <user> --password <pass>
-tubectl auth mlflow --username <user> --password <pass> --force
+tubectl auth mlflow --username <user> --password <pass> [--server-url <url>]
+tubectl auth mlflow --username <user> --password <pass> [--server-url <url>] --force
 ```
 
 **YouTube**: Opens a browser URL, listens for the OAuth callback on a local port, and saves the token to `~/.tubectl/auth/youtube.json`. Requires `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` environment variables.
@@ -105,7 +104,7 @@ The OAuth redirect URI must be configured in the Google Cloud Console as `http:/
 
 ### `tubectl registry`
 
-Local metadata cache for videos you want to monitor.
+Local SQLite-backed store for videos you want to monitor.
 
 | Subcommand | Flags | Description |
 |---|---|---|
@@ -125,9 +124,9 @@ Fetch data from the YouTube Data API (requires authentication).
 | `get` | `--video-id` | Video metadata (title, description, channel, published date) |
 | `comments` | `--video-id`, `--max-results` (default 20), `--order` (time/relevance) | Comment threads (JSON) |
 | `get-transcript` | `--video-id`, `--language` (default en), `--no-cache` | Captions/transcript (cached locally) |
-| `comment` | `--video-id`, `--text` | Post a top-level comment on a video |
+| `comment` | `--video-id`, `--text`, `--auto-approve` | Post a top-level comment on a video |
 
-Transcripts are cached to `~/.tubectl/transcripts/{video-id}.json`. Pass `--no-cache` to skip the cache and always fetch from the API.
+Transcripts are cached in the local SQLite database (`tubectl.db`). Pass `--no-cache` to skip the cache and always fetch from the API.
 
 ### `tubectl comment`
 
@@ -136,8 +135,8 @@ Operations on individual comments.
 | Subcommand | Flags | Description |
 |---|---|---|
 | `get` | `--comment-id` | Comment content, author, date (JSON) |
-| `reply` | `--comment-id`, `--text` | Reply to a comment |
-| `delete` | `--comment-id` | Delete a comment |
+| `reply` | `--comment-id`, `--text`, `--auto-approve` | Reply to a comment |
+| `delete` | `--comment-id`, `--force` | Delete a comment |
 
 ### `tubectl ai`
 
@@ -155,14 +154,14 @@ YouTube automations powered by AI.
 
 | Subcommand | Flags | Description |
 |---|---|---|
-| `answer-comment` | `--video-id`, `--comment-id`, `--auto-approve`, `--only-print`, `--prompt-file`, `--prompt-name` | Generate an AI reply to a comment and optionally post it |
+| `answer-comment` | `--video-id`, `--comment-id`, `--auto-approve`, `--only-print`, `--prompt-file`, `--prompt-name`, `--model`, `--transcript-language` | Generate an AI reply to a comment and optionally post it |
 
 #### `bot answer-comment` flow
 
 1. Fetches the comment by `--comment-id`
-2. Loads the transcript for `--video-id` (cache or API)
+2. Loads the transcript for `--video-id` (SQLite cache or API). Use `--transcript-language` to pick a language (default `en`).
 3. Builds a prompt with the comment text and transcript as context
-4. Calls OpenAI to generate a reply
+4. Calls OpenAI to generate a reply (model defaults to `gpt-4o-mini`; override with `--model`)
 5. By default: shows the reply, asks for confirmation, then posts via the YouTube API
 6. `--only-print`: just print the reply, don't post
 7. `--auto-approve`: skip the confirmation prompt and post immediately
@@ -283,16 +282,17 @@ tubectl video get --video-id dQw4w9WgXcQ > video.json
 `tubectl registry list`:
 
 ```json
-{
-  "videos": [
-    {
-      "title": "Rick Astley - Never Gonna Give You Up",
-      "video_id": "dQw4w9WgXcQ",
-      "published_at": "2009-10-25T06:57:33Z",
-      "registered_at": "2026-07-13T12:00:00Z"
-    }
-  ]
-}
+[
+  {
+    "ID": "dQw4w9WgXcQ",
+    "Title": "Rick Astley - Never Gonna Give You Up",
+    "Description": "",
+    "ChannelID": "UCuAXFkgsw1L7xaCfnd5JJOw",
+    "PublishedAt": "2009-10-25T06:57:33Z",
+    "RegisteredAt": "2026-07-13T12:00:00Z",
+    "UpdatedAt": "2026-07-13T12:00:00Z"
+  }
+]
 ```
 
 ## GitHub Actions Auto-Reply
@@ -331,7 +331,7 @@ To set up: run `tubectl auth youtube` locally, base64-encode `~/.tubectl/auth/yo
 
 ### `init` not run
 
-If you see errors about missing registry or config files, run `tubectl init` first to create the `~/.tubectl/` directory tree.
+If you see errors about missing config or database files, run `tubectl init` first to create the `~/.tubectl/` directory tree.
 
 ### OAuth token expired
 
