@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"github.com/manuelgilm/tubectl/internal/registry"
 	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/storage"
 	"gopkg.in/yaml.v3"
 	"github.com/spf13/cobra"
 )
@@ -37,10 +37,11 @@ Run this once before using other commands.`,
 			return fmt.Errorf("error creating config file %w", err)
 		}
 
-		err = registry.WriteRegistryFile(tubehome)
+		db, err := storage.New(filepath.Join(tubehome, "tubectl.db"))
 		if err != nil {
-			return fmt.Errorf("error creating registry file %w", err)
+			return fmt.Errorf("error creating database: %w", err)
 		}
+		db.Close()
 		// writing the emergency prompt
 		err = writeEmergencyPrompt(tubehome)
 		if err != nil {

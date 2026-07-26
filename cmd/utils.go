@@ -2,14 +2,17 @@ package cmd
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"path/filepath"
+	"strings"
+	"time"
 	"github.com/manuelgilm/tubectl/internal/ai"
 	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/storage"
 	"github.com/manuelgilm/tubectl/internal/trace"
 	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
@@ -346,4 +349,80 @@ func renderTemplate(template, commentText, transcriptText string) string {
 	result := strings.ReplaceAll(template, "{{comment}}", commentText)
 	result = strings.ReplaceAll(result, "{{transcript}}", transcriptText)
 	return result
+}
+
+func openDB() (*sql.DB, error) {
+	home, err := TubeCtlHome()
+	if err != nil {
+		return nil, err
+	}
+	dbPath := filepath.Join(home, "tubectl.db")
+	db, err := storage.New(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening database: %w", err)
+	}
+	if err := maybeImportJSON(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+type legacyRegistry struct {
+	Videos []legacyVideo `json:"videos"`
+}
+
+type legacyVideo struct {
+	Title        string    `json:"title"`
+	VideoID      string    `json:"video_id"`
+	PublishedAt  time.Time `json:"published_at"`
+	RegisteredAt time.Time `json:"registered_at"`
+}
+
+func maybeImportJSON(db *sql.DB) error {
+	home, err := TubeCtlHome()
+	if err != nil {
+		return err
+	}
+	jsonPath := filepath.Join(home, "registry.json")
+	if _, err := os.Stat(jsonPath); os.IsNotExist(err) {
+		return nil
+	}
+
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		return fmt.Errorf("reading old registry.json: %w", err)
+	}
+
+	var reg legacyRegistry
+	if err := json.Unmarshal(data, &reg); err != nil {
+		return fmt.Errorf("parsing old registry.json: %w", err)
+	}
+
+	repo := storage.NewVideoRepo(db)
+	now := time.Now()
+	for _, v := range reg.Videos {
+		vv := storage.Video{
+			ID:           v.VideoID,
+			Title:        v.Title,
+			PublishedAt:  v.PublishedAt,
+			RegisteredAt: v.RegisteredAt,
+			UpdatedAt:    v.RegisteredAt,
+		}
+		if vv.RegisteredAt.IsZero() {
+			vv.RegisteredAt = now
+		}
+		if vv.UpdatedAt.IsZero() {
+			vv.UpdatedAt = now
+		}
+		if err := repo.Add(context.Background(), vv); err != nil {
+			return fmt.Errorf("importing video %s: %w", v.VideoID, err)
+		}
+	}
+
+	if err := os.Rename(jsonPath, jsonPath+".migrated"); err != nil {
+		return fmt.Errorf("renaming registry.json: %w", err)
+	}
+	fmt.Printf("Imported %d videos from registry.json into tubectl.db\n", len(reg.Videos))
+	return nil
 }

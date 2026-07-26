@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"github.com/manuelgilm/tubectl/internal/registry"
+	"github.com/manuelgilm/tubectl/internal/storage"
 )
 
 func TestCreateFolder(t *testing.T) {
@@ -42,26 +42,28 @@ func TestWriteConfigFile(t *testing.T) {
 	}
 }
 
-func TestWriteRegistryFile(t *testing.T) {
+func TestCreateDatabase(t *testing.T) {
 	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "tubectl.db")
 
-	err := registry.WriteRegistryFile(dir)
+	db, err := storage.New(dbPath)
 	if err != nil {
-		t.Fatalf("Failed while writing registry file %v ", err)
+		t.Fatalf("storage.New failed: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		t.Fatal("expected tubectl.db to exist")
 	}
 
-	var emptyRegistryFile registry.TubeRegistry
-
-	data, err := os.ReadFile(filepath.Join(dir, "registry.json"))
+	var version int
+	err = db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM _migrations").Scan(&version)
 	if err != nil {
-		t.Fatalf("Failed Reading the registry file %v ", err)
+		t.Fatalf("reading migrations: %v", err)
 	}
-
-	err = json.Unmarshal(data, &emptyRegistryFile)
-	if err != nil {
-		t.Fatalf("Error while unmarshalling %v ", err)
+	if version == 0 {
+		t.Fatal("expected migrations to have run")
 	}
-
 }
 
 func TestCreateFolder_alreadyExists(t *testing.T) {
