@@ -116,6 +116,65 @@ func TestTranscriptRepo_SaveLoad(t *testing.T) {
 	})
 }
 
+func TestTranscriptRepo_SaveCreatesVideo(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewTranscriptRepo(db)
+
+	st := &StoredTranscript{
+		VideoID:  "unregistered-video",
+		Language: "en",
+		Content:  "hello",
+		Lines:    `[]`,
+		CachedAt: time.Now(),
+	}
+	if err := repo.Save(context.Background(), st); err != nil {
+		t.Fatalf("Save for unregistered video: %v", err)
+	}
+
+	video, err := NewVideoRepo(db).Get(context.Background(), "unregistered-video")
+	if err != nil {
+		t.Fatalf("Get video: %v", err)
+	}
+	if video == nil {
+		t.Fatal("expected video row to be auto-created")
+	}
+
+	loaded, err := repo.Load(context.Background(), "unregistered-video", "en")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded == nil || loaded.Content != "hello" {
+		t.Errorf("loaded = %+v, want content %q", loaded, "hello")
+	}
+}
+
+func TestTranscriptRepo_SaveKeepsExistingVideoMetadata(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewTranscriptRepo(db)
+	now := time.Now()
+	addTestVideo(t, db, "vid1")
+
+	NewVideoRepo(db).Update(context.Background(), "vid1", "My Video")
+
+	if err := repo.Save(context.Background(), &StoredTranscript{
+		VideoID:  "vid1",
+		Language: "en",
+		Content:  "hello",
+		Lines:    `[]`,
+		CachedAt: now,
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	video, err := NewVideoRepo(db).Get(context.Background(), "vid1")
+	if err != nil {
+		t.Fatalf("Get video: %v", err)
+	}
+	if video.Title != "My Video" {
+		t.Errorf("title = %q, want %q (INSERT OR IGNORE must not overwrite)", video.Title, "My Video")
+	}
+}
+
 func TestTranscriptRepo_Delete(t *testing.T) {
 	db := newTestDB(t)
 	repo := NewTranscriptRepo(db)
