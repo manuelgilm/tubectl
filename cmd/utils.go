@@ -186,15 +186,18 @@ func ResolvePromptFromFile(promptFile, commentText, transcriptText string) (stri
 func ResolvePromptFromMLflowRegistry(cmd *cobra.Command, promptName, commentText, transcriptText string) (string, error) {
 	mlflowClient, err := loadMlflowClient()
 	if err != nil {
-		return "" , fmt.Errorf("loading MLflow client: %w", err)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow client unavailable (%v), falling back to default prompt\n", err)
+		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 	registered, err := mlflowClient.GetPrompt(cmd.Context(), promptName)
 	if err != nil {
-		return "", fmt.Errorf("fetching prompt %q from MLflow: %w", promptName, err)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow prompt %q fetch failed (%v), falling back to default prompt\n", promptName, err)
+		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 	template := registered.PromptText()
 	if template == "" {
-		return "", fmt.Errorf("prompt %q has no prompt text in MLflow",promptName)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow prompt %q has no prompt text, falling back to default prompt\n", promptName)
+		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 	rendered := renderTemplate(template, commentText, transcriptText)	
 	return rendered, nil
