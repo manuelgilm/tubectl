@@ -108,6 +108,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install yq
+        run: pip install yq
+
       - name: Build tubectl
         run: go build -o tubectl .
 
@@ -116,6 +119,12 @@ jobs:
           mkdir -p ~/.tubectl/auth
           echo "${{ secrets.TUBECTL_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.json
           chmod 600 ~/.tubectl/auth/youtube.json
+
+      - name: Register videos in DB
+        run: |
+          for VID in $(yq -r '.videos[]' registered_videos.yaml); do
+            ./tubectl registry add --video-id "$VID" || true
+          done
 
       - name: Download pending comments
         uses: actions/download-artifact@v4

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"github.com/manuelgilm/tubectl/internal/prompt"
 	"github.com/manuelgilm/tubectl/internal/youtube"
+	"github.com/spf13/cobra"
 )
 
 func TestPromptFileRender(t *testing.T) {
@@ -64,6 +65,27 @@ func TestPromptFileRender(t *testing.T) {
 			t.Errorf("got %q", result)
 		}
 	})
+}
+
+func TestResolvePromptFromMLflowRegistry_FallsBackToDefault(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MLFLOW_TRACKING_USERNAME", "")
+	t.Setenv("MLFLOW_TRACKING_PASSWORD", "")
+
+	cmd := &cobra.Command{}
+	cmd.SetErr(&bytes.Buffer{})
+
+	template, err := ResolvePromptFromMLflowRegistry(cmd, "sama_bot_system_prompt", "hello comment", "transcript text")
+	if err != nil {
+		t.Fatalf("expected fallback without error, got: %v", err)
+	}
+	if !strings.Contains(template, "Gilsama-Bot") {
+		t.Errorf("expected fallback to default prompt, got: %s", template)
+	}
+	if !strings.Contains(template, "hello comment") {
+		t.Errorf("expected comment text in template, got: %s", template)
+	}
 }
 
 func TestLoadPromptFile(t *testing.T) {
