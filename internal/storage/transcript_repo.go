@@ -24,6 +24,13 @@ func NewTranscriptRepo(db *sql.DB) *TranscriptRepo {
 }
 
 func (r *TranscriptRepo) Save(ctx context.Context, t *StoredTranscript) error {
+	now := formatTime(time.Now())
+	if _, err := r.db.ExecContext(ctx, `
+		INSERT OR IGNORE INTO videos (id, title, description, channel_id, published_at, registered_at, updated_at)
+		VALUES (?, '', '', '', '', ?, ?)`, t.VideoID, now, now); err != nil {
+		return fmt.Errorf("ensure video %s exists: %w", t.VideoID, err)
+	}
+
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO transcripts (video_id, language, track_kind, caption_id, content, lines, cached_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
