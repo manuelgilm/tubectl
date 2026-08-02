@@ -65,6 +65,8 @@ func resolveMLflowCreds() (mlflowCreds, error) {
 	serverURL := os.Getenv("MLFLOW_SERVER_URL")
 
 	if username == "" || password == "" {
+		// Fall back entirely to the credentials file. Never mix half the env
+		// pair (e.g. username from env) with a password from the file.
 		home, err := TubeCtlHome()
 		if err != nil {
 			return mlflowCreds{}, err
@@ -73,12 +75,8 @@ func resolveMLflowCreds() (mlflowCreds, error) {
 		if err != nil {
 			return mlflowCreds{}, fmt.Errorf("MLflow credentials not found. Set MLFLOW_TRACKING_USERNAME/MLFLOW_TRACKING_PASSWORD env vars or run 'tubectl auth mlflow --username <user> --password <pass>'")
 		}
-		if username == "" {
-			username = creds.Username
-		}
-		if password == "" {
-			password = creds.Password
-		}
+		username = creds.Username
+		password = creds.Password
 		if serverURL == "" {
 			serverURL = creds.ServerURL
 		}
