@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -116,6 +117,54 @@ func TestComplete(t *testing.T) {
 		_, err := c.Complete(context.Background(), nil)
 		if err == nil {
 			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("http status with json error body", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error": map[string]any{"message": "invalid_api_key"},
+			})
+		}))
+		defer srv.Close()
+
+		c := &Client{
+			apiKey:  "bad",
+			model:   "gpt-4o-mini",
+			baseURL: srv.URL,
+			http:    srv.Client(),
+		}
+
+		_, err := c.Complete(context.Background(), nil)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "401") || !strings.Contains(err.Error(), "invalid_api_key") {
+			t.Errorf("error = %q, want status and message", err)
+		}
+	})
+
+	t.Run("http status with plain text body", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte("rate limit exceeded"))
+		}))
+		defer srv.Close()
+
+		c := &Client{
+			apiKey:  "sk-test",
+			model:   "gpt-4o-mini",
+			baseURL: srv.URL,
+			http:    srv.Client(),
+		}
+
+		_, err := c.Complete(context.Background(), nil)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "429") || !strings.Contains(err.Error(), "rate limit exceeded") {
+			t.Errorf("error = %q, want status and body", err)
 		}
 	})
 

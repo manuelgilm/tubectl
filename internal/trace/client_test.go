@@ -95,6 +95,23 @@ func TestClient_GetTrace(t *testing.T) {
 	}
 }
 
+func TestClient_GetTrace_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"trace": null}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "", "")
+	_, err := c.GetTrace(context.Background(), "tr-unknown")
+	if err == nil {
+		t.Fatal("expected not-found error")
+	}
+	if !strings.Contains(err.Error(), "tr-unknown") {
+		t.Errorf("error = %q, want trace id", err)
+	}
+}
+
 func TestClient_ListTraces(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/2.0/mlflow/traces" {

@@ -11,6 +11,34 @@ import (
 	"testing"
 )
 
+func TestNewMLflowTracer_warnsWhenMisconfigured(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MLFLOW_TRACING_ENABLED", "true")
+	t.Setenv("MLFLOW_TRACKING_USERNAME", "")
+	t.Setenv("MLFLOW_TRACKING_PASSWORD", "")
+
+	var buf bytes.Buffer
+	tr := newMLflowTracer(&buf)
+	if tr != nil {
+		t.Fatal("expected nil tracer when credentials are missing")
+	}
+	if !strings.Contains(buf.String(), "Warning: MLflow tracing enabled") {
+		t.Errorf("expected warning on stderr, got: %q", buf.String())
+	}
+}
+
+func TestNewMLflowTracer_disabled(t *testing.T) {
+	t.Setenv("MLFLOW_TRACING_ENABLED", "false")
+	var buf bytes.Buffer
+	if tr := newMLflowTracer(&buf); tr != nil {
+		t.Fatal("expected nil tracer when tracing disabled")
+	}
+	if buf.Len() != 0 {
+		t.Errorf("expected no output when tracing disabled, got: %q", buf.String())
+	}
+}
+
 func TestPromptFileRender(t *testing.T) {
 	t.Run("all vars present", func(t *testing.T) {
 		p := &prompt.PromptFile{
@@ -137,17 +165,8 @@ func TestPrintTranscript(t *testing.T) {
 		},
 	}
 
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printTranscript(transcript)
-
-	w.Close()
-	os.Stdout = old
-
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	printTranscript(&buf, transcript)
 	output := buf.String()
 
 	if !strings.Contains(output, "[00:00] Hello") {

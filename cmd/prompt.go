@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
-	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
@@ -14,7 +14,7 @@ var promptCmd = &cobra.Command{
 	Use:   "prompt",
 	Short: "Commands to communicate with the prompt registry",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("prompt called")
+		cmd.Println("prompt called")
 	},
 }
 var listPromptsCmd = &cobra.Command{
@@ -35,7 +35,7 @@ var listPromptsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println(string(bytes))
+		cmd.Println(string(bytes))
 		return nil
 	},
 }
@@ -59,7 +59,7 @@ var getPromptCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println(string(bytes))
+		cmd.Println(string(bytes))
 
 		return nil
 	},

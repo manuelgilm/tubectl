@@ -22,7 +22,7 @@ Requires --query. Optionally set --model to override the default
 			return fmt.Errorf("--query is required")
 		}
 
-		openaiClient, err := loadOpenAIClient(cmd.Context(), completeArgs.model)
+		openaiClient, err := loadOpenAIClient(completeArgs.model)
 		if err != nil {
 			return fmt.Errorf("loading openai client: %w", err)
 		}
@@ -37,7 +37,7 @@ Requires --query. Optionally set --model to override the default
 			return fmt.Errorf("AI completion failed: %w", err)
 		}
 
-		fmt.Println(completion)
+		cmd.Println(completion)
 		return nil
 	},
 }

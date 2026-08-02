@@ -7,9 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -148,6 +150,19 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (_ string, ca
 		return "", fmt.Errorf("openai request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		var apiErr struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(body, &apiErr) == nil && apiErr.Error.Message != "" {
+			return "", fmt.Errorf("openai API error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
+		}
+		return "", fmt.Errorf("openai API error (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
 
 	var result struct {
 		Choices []struct {

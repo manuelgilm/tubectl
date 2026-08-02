@@ -85,7 +85,7 @@ var registryListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Println(string(data))
+		cmd.Println(string(data))
 		return nil
 	},
 }
@@ -115,7 +115,7 @@ var registryCmd = &cobra.Command{
 	Use:   "registry",
 	Short: "Manage the local video registry",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("registry called")
+		cmd.Println("registry called")
 	},
 }
 

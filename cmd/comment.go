@@ -31,7 +31,7 @@ func confirmAction(cmd *cobra.Command, prompt string, autoApprove bool) error {
 		return fmt.Errorf("reading confirmation (use --auto-approve in non-interactive mode): %w", err)
 	}
 	if response != "y" && response != "Y" {
-		fmt.Println("Cancelled.")
+		fmt.Fprintln(cmd.ErrOrStderr(), "Cancelled.")
 		return nil
 	}
 	return nil
@@ -58,7 +58,7 @@ Use --auto-approve to skip the prompt.`,
 		if err != nil {
 			return fmt.Errorf("replying to comment %s : %w", replyToCommentArgs.commentID, err)
 		}
-		fmt.Printf("comment: %s posted\n", comment.Snippet.TextDisplay)
+		fmt.Fprintf(cmd.ErrOrStderr(), "comment: %s posted\n", comment.Snippet.TextDisplay)
 
 		return nil
 	},
@@ -84,7 +84,7 @@ Use --force to skip the prompt.`,
 		if err != nil {
 			return fmt.Errorf("deleting comment %s: %w", deleteCommentArgs.commentID, err)
 		}
-		fmt.Printf("comment %s deleted!\n", deleteCommentArgs.commentID)
+		fmt.Fprintf(cmd.ErrOrStderr(), "comment %s deleted!\n", deleteCommentArgs.commentID)
 		return nil
 	},
 }
@@ -106,7 +106,7 @@ var getCommentCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("marshaling comment: %w", err)
 		}
-		fmt.Println(string(data))
+		cmd.Println(string(data))
 		return nil
 	},
 }
@@ -114,7 +114,7 @@ var commentCmd = &cobra.Command{
 	Use:   "comment",
 	Short: "YouTube comment operations",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("comment called")
+		cmd.Println("comment called")
 	},
 }
 

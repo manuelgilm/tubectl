@@ -13,6 +13,7 @@ import (
 
 	otlpcollectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	otlpcommon "go.opentelemetry.io/proto/otlp/common/v1"
+	otlptrace "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/manuelgilm/tubectl/internal/ai"
 )
@@ -302,5 +303,97 @@ func TestCreateSpan_InvalidTraceID(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for invalid trace ID")
+	}
+}
+
+func TestCreateSpan_ExportsWithCancelledContext(t *testing.T) {
+	received := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received <- struct{}{}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tr := NewMLflowTracer(srv.URL, "", "")
+	err := tr.CreateSpan(ctx, ai.SpanRequest{
+		TraceID:   "4bf92f3577b34da6a3ce929d0e0e4736",
+		Name:      "test",
+		StartTime: time.Now(),
+		EndTime:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSpan with cancelled context: %v", err)
+	}
+	select {
+	case <-received:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not receive span despite cancelled context")
+	}
+}
+
+func TestCreateSpan_ZeroTimestamps(t *testing.T) {
+	var gotSpan *otlptrace.Span
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var exportReq otlpcollectortrace.ExportTraceServiceRequest
+		if err := proto.Unmarshal(body, &exportReq); err != nil {
+			t.Errorf("unmarshal: %v", err)
+		}
+		gotSpan = exportReq.ResourceSpans[0].ScopeSpans[0].Spans[0]
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	tr := NewMLflowTracer(srv.URL, "", "")
+	err := tr.CreateSpan(context.Background(), ai.SpanRequest{
+		TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
+		Name:    "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateSpan: %v", err)
+	}
+	if gotSpan == nil {
+		t.Fatal("server did not receive span")
+	}
+	if gotSpan.StartTimeUnixNano == 0 || gotSpan.EndTimeUnixNano == 0 {
+		t.Fatalf("timestamps must be set: start=%d end=%d", gotSpan.StartTimeUnixNano, gotSpan.EndTimeUnixNano)
+	}
+	if gotSpan.EndTimeUnixNano < gotSpan.StartTimeUnixNano {
+		t.Fatalf("end %d < start %d", gotSpan.EndTimeUnixNano, gotSpan.StartTimeUnixNano)
+	}
+}
+
+func TestCreateSpan_NoFinishReasonsWhenEmpty(t *testing.T) {
+	var gotSpan *otlptrace.Span
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var exportReq otlpcollectortrace.ExportTraceServiceRequest
+		if err := proto.Unmarshal(body, &exportReq); err != nil {
+			t.Errorf("unmarshal: %v", err)
+		}
+		gotSpan = exportReq.ResourceSpans[0].ScopeSpans[0].Spans[0]
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	tr := NewMLflowTracer(srv.URL, "", "")
+	now := time.Now()
+	err := tr.CreateSpan(context.Background(), ai.SpanRequest{
+		TraceID:   "4bf92f3577b34da6a3ce929d0e0e4736",
+		Name:      "openai_chat",
+		StartTime: now,
+		EndTime:   now,
+		Error:     "boom",
+	})
+	if err != nil {
+		t.Fatalf("CreateSpan: %v", err)
+	}
+	for _, attr := range gotSpan.Attributes {
+		if attr.Key == "gen_ai.response.finish_reasons" {
+			t.Errorf("unexpected finish_reasons attribute with empty FinishReason")
+		}
 	}
 }

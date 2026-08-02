@@ -58,7 +58,7 @@ or --only-print to just display the reply without posting.`,
 		}
 
 		if answerCommentArgs.onlyPrint {
-			fmt.Println(reply)
+			cmd.Println(reply)
 			return nil
 		}
 

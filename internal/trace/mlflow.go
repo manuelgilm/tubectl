@@ -61,6 +61,17 @@ func (t *MLflowTracer) CreateSpan(ctx context.Context, req ai.SpanRequest) error
 		return fmt.Errorf("generate span id: %w", err)
 	}
 
+	start, end := req.StartTime, req.EndTime
+	if start.IsZero() {
+		start = time.Now()
+	}
+	if end.IsZero() {
+		end = start
+	}
+	if end.Before(start) {
+		end = start
+	}
+
 	attrs := []*otlpcommon.KeyValue{
 		kv("mlflow.traceName", req.Name),
 		kv("mlflow.spanInputs", formatSpanInputs(req.Messages)),
@@ -70,8 +81,10 @@ func (t *MLflowTracer) CreateSpan(ctx context.Context, req ai.SpanRequest) error
 		kv("gen_ai.usage.output_tokens", int64(req.CompletionTokens)),
 		kv("gen_ai.request.model", req.Model),
 		kv("gen_ai.provider.name", "openai"),
-		kv("gen_ai.response.finish_reasons", []string{req.FinishReason}),
 		kv("latency_ms", req.LatencyMs),
+	}
+	if req.FinishReason != "" {
+		attrs = append(attrs, kv("gen_ai.response.finish_reasons", []string{req.FinishReason}))
 	}
 	for k, v := range req.Tags {
 		attrs = append(attrs, kv("mlflow.traceTag."+k, v))
@@ -89,8 +102,8 @@ func (t *MLflowTracer) CreateSpan(ctx context.Context, req ai.SpanRequest) error
 		TraceId:           traceID,
 		SpanId:            spanID,
 		Name:              req.Name,
-		StartTimeUnixNano: uint64(req.StartTime.UnixNano()),
-		EndTimeUnixNano:   uint64(req.EndTime.UnixNano()),
+		StartTimeUnixNano: uint64(start.UnixNano()),
+		EndTimeUnixNano:   uint64(end.UnixNano()),
 		Attributes:        attrs,
 		Status:            &otlptrace.Status{Code: statusCode},
 	}
@@ -114,7 +127,10 @@ func (t *MLflowTracer) CreateSpan(ctx context.Context, req ai.SpanRequest) error
 	if err != nil {
 		return fmt.Errorf("build span URL: %w", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, "POST",
+	// Detach from the caller's context so a cancelled or timed-out request
+	// context does not prevent the span itself from being exported. The HTTP
+	// client timeout still bounds the call.
+	httpReq, err := http.NewRequestWithContext(context.WithoutCancel(ctx), "POST",
 		endpoint, bytes.NewReader(protoData))
 	if err != nil {
 		return fmt.Errorf("build span request: %w", err)

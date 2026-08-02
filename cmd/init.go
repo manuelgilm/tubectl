@@ -7,6 +7,7 @@ import (
 	"github.com/manuelgilm/tubectl/internal/storage"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -31,7 +32,7 @@ Run this once before using other commands.`,
 			return fmt.Errorf("error creating folder: %w", err)
 		}
 
-		err = writeConfigFile(tubehome)
+		err = writeConfigFile(cmd.ErrOrStderr(), tubehome)
 		if err != nil {
 			return fmt.Errorf("error creating config file %w", err)
 		}
@@ -42,7 +43,7 @@ Run this once before using other commands.`,
 		}
 		db.Close()
 		// writing the emergency prompt
-		err = writeEmergencyPrompt(tubehome)
+		err = writeEmergencyPrompt(cmd.ErrOrStderr(), tubehome)
 		if err != nil {
 			return fmt.Errorf("writing emergency prompt: %w", err)
 		}
@@ -81,10 +82,13 @@ func createFolder(path string) error {
 
 	return nil
 }
-func writeConfigFile(path string) error {
+func writeConfigFile(w io.Writer, path string) error {
 	configPath := filepath.Join(path, "config.json")
 	if _, err := os.Stat(configPath); err == nil {
-		fmt.Println("config.json already exists, skipping")
+		fmt.Fprintln(w, "config.json already exists, skipping")
+		// Fix permissions on existing files so an API key stored in it is
+		// not world-readable.
+		_ = os.Chmod(configPath, 0600)
 		return nil
 	}
 
@@ -99,14 +103,14 @@ func writeConfigFile(path string) error {
 		return fmt.Errorf("error with Marshal: %w", err)
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(configPath, data, 0600)
 }
 
-func writeEmergencyPrompt(path string) error {
+func writeEmergencyPrompt(w io.Writer, path string) error {
 	dir := filepath.Join(path, "prompts")
 	promptPath := filepath.Join(dir, "yt-bot-answer-comment.yaml")
 	if _, err := os.Stat(promptPath); err == nil {
-		fmt.Println("emergency prompt already exists, skipping")
+		fmt.Fprintln(w, "emergency prompt already exists, skipping")
 		return nil
 	}
 

@@ -6,6 +6,7 @@ import (
 	"github.com/manuelgilm/tubectl/internal/storage"
 	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
+	"io"
 	"strings"
 	"time"
 )
@@ -51,7 +52,7 @@ Use --auto-approve to skip the prompt.`,
 		if err != nil {
 			return fmt.Errorf("posting a comment: %w", err)
 		}
-		fmt.Println("Comment Posted!")
+		fmt.Fprintln(cmd.ErrOrStderr(), "Comment Posted!")
 		return nil
 	},
 }
@@ -83,7 +84,7 @@ Use --no-cache to bypass the cache and fetch fresh data.`,
 				}
 				fmt.Fprintf(cmd.ErrOrStderr(), "Using Cached Transcript (language: %s, kind: %s)\n\n",
 					t.Language, t.TrackKind)
-				printTranscript(t)
+				printTranscript(cmd.OutOrStdout(), t)
 				return nil
 			}
 		}
@@ -108,7 +109,7 @@ Use --no-cache to bypass the cache and fetch fresh data.`,
 			fmt.Fprintf(cmd.ErrOrStderr(), "Transcript cached to local database\n\n")
 		}
 
-		printTranscript(transcript)
+		printTranscript(cmd.OutOrStdout(), transcript)
 		return nil
 	},
 }
@@ -132,7 +133,7 @@ var getCommentsCmd = &cobra.Command{
 			return fmt.Errorf("marshaling comments: %w", err)
 		}
 
-		fmt.Println(string(data))
+		cmd.Println(string(data))
 		return nil
 	},
 }
@@ -152,7 +153,7 @@ var getVideoCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("marshaling video: %w", err)
 		}
-		fmt.Println(string(data))
+		cmd.Println(string(data))
 		return nil
 	},
 }
@@ -160,7 +161,7 @@ var videoCmd = &cobra.Command{
 	Use:   "video",
 	Short: "YouTube video operations",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("video called")
+		cmd.Println("video called")
 	},
 }
 
@@ -190,11 +191,11 @@ func init() {
 	postCommentCmd.Flags().BoolVar(&postCommentArgs.autoApprove, "auto-approve", false, "Skip confirmation prompt and post directly")
 }
 
-func printTranscript(t *youtube.Transcript) {
+func printTranscript(w io.Writer, t *youtube.Transcript) {
 	for _, line := range t.Lines {
 		minutes := int(line.Start) / 60
 		seconds := int(line.Start) % 60
-		fmt.Printf("[%02d:%02d] %s\n", minutes, seconds, line.Text)
+		fmt.Fprintf(w, "[%02d:%02d] %s\n", minutes, seconds, line.Text)
 	}
 }
 

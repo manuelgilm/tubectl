@@ -31,7 +31,7 @@ func TubeCtlHome() (string, error) {
 
 }
 
-func loadOpenAIClient(ctx context.Context, model string) (*ai.Client, error) {
+func loadOpenAIClient(model string) (*ai.Client, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
 		if cfg, err := loadConfig(); err == nil {
@@ -46,7 +46,7 @@ func loadOpenAIClient(ctx context.Context, model string) (*ai.Client, error) {
 		return nil, fmt.Errorf("OPENAI_API_KEY not found in environment variables or config.json")
 	}
 	c := ai.NewClient(apiKey, model)
-	if tracer := newMLflowTracer(ctx); tracer != nil {
+	if tracer := newMLflowTracer(os.Stderr); tracer != nil {
 		c.WithTracer(tracer)
 	}
 	return c, nil
@@ -91,12 +91,13 @@ func resolveMLflowCreds() (mlflowCreds, error) {
 	return mlflowCreds{username: username, password: password, serverURL: serverURL}, nil
 }
 
-func newMLflowTracer(_ context.Context) *trace.MLflowTracer {
+func newMLflowTracer(w io.Writer) *trace.MLflowTracer {
 	if os.Getenv("MLFLOW_TRACING_ENABLED") != "true" {
 		return nil
 	}
 	creds, err := resolveMLflowCreds()
 	if err != nil {
+		fmt.Fprintf(w, "Warning: MLflow tracing enabled but credentials could not be resolved: %v\n", err)
 		return nil
 	}
 	tracer := trace.NewMLflowTracer(creds.serverURL, creds.username, creds.password)
@@ -292,7 +293,7 @@ func GenerateAnswer(cmd *cobra.Command, resolvedTemplate, model string, tags map
 		{Role: "system", Content: resolvedTemplate},
 	}
 
-	aiClient, err := loadOpenAIClient(cmd.Context(), model)
+	aiClient, err := loadOpenAIClient(model)
 	if err != nil {
 		return "", fmt.Errorf("loading AI client: %w", err)
 	}
@@ -316,7 +317,7 @@ func replyComment(cmd *cobra.Command, commentID, reply string, autoApprove bool)
 			return fmt.Errorf("reading confirmation (use --auto-approve in non-interactive mode): %w", err)
 		}
 		if confirm != "y" && confirm != "Y" {
-			fmt.Println("Reply cancelled.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "Reply cancelled.")
 			return nil
 		}
 	}
@@ -329,7 +330,7 @@ func replyComment(cmd *cobra.Command, commentID, reply string, autoApprove bool)
 		return fmt.Errorf("posting reply: %w", err)
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "Reply posted (ID: %s)\n", posted.ID)
-	fmt.Println(reply)
+	cmd.Println(reply)
 	return nil
 }
 

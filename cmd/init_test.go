@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"github.com/manuelgilm/tubectl/internal/storage"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,20 +26,49 @@ func TestCreateFolder(t *testing.T) {
 func TestWriteConfigFile(t *testing.T) {
 	dir := t.TempDir()
 
-	err := writeConfigFile(dir)
+	err := writeConfigFile(io.Discard, dir)
 	if err != nil {
 		t.Fatalf("Write File failed: %v ", err)
 	}
 
 	var emptyConfig Config
 
-	data, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	configPath := filepath.Join(dir, "config.json")
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("Failed while reading the file %v ", err)
 	}
 	err = json.Unmarshal(data, &emptyConfig)
 	if err != nil {
 		t.Fatalf("Error while unmarshaling %v ", err)
+	}
+
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("stat config.json: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Errorf("config.json mode = %o, want 600", perm)
+	}
+}
+
+func TestWriteConfigFile_repairsExistingPerms(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(configPath, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeConfigFile(io.Discard, dir); err != nil {
+		t.Fatalf("writeConfigFile: %v", err)
+	}
+
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("stat config.json: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Errorf("config.json mode = %o, want 600", perm)
 	}
 }
 

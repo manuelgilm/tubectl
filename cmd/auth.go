@@ -40,7 +40,7 @@ variables. Use --force to re-authenticate.`,
 		if !authYoutubeArgs.forceLogin {
 			if token, err := youtube.LoadToken(tokenPath); err == nil {
 				if token.Valid() {
-					fmt.Println("Already authenticated. Use `tubectl auth youtube --force` to re-authenticate.")
+					fmt.Fprintln(cmd.ErrOrStderr(), "Already authenticated. Use `tubectl auth youtube --force` to re-authenticate.")
 					return nil
 				}
 			}
@@ -67,7 +67,7 @@ Use --force to overwrite existing credentials.`,
 
 		if !authMlflowArgs.forceLogin {
 			if _, err := prompt.LoadCredentials(credsPath); err == nil {
-				fmt.Println("Already authenticated. Use --force to re-authenticate.")
+				fmt.Fprintln(cmd.ErrOrStderr(), "Already authenticated. Use --force to re-authenticate.")
 				return nil
 			}
 		}

@@ -133,6 +133,9 @@ func (c *Client) GetTrace(ctx context.Context, traceID string) (*Trace, error) {
 	if err := c.get(ctx, "/api/3.0/mlflow/traces/get", params, &resp); err != nil {
 		return nil, err
 	}
+	if resp.Trace.TraceInfo.TraceID == "" {
+		return nil, fmt.Errorf("trace %q not found", traceID)
+	}
 	return &resp.Trace, nil
 }
 
