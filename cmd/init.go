@@ -3,7 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/prompting"
 	"github.com/manuelgilm/tubectl/internal/storage"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -114,7 +114,7 @@ func writeEmergencyPrompt(path string) error {
 		return err
 	}
 
-	p := prompt.PromptFile{
+	p := prompting.PromptFile{
 		Template: fmt.Sprintf(`You are Gilsama-Bot, an AI assistant that helps manage YouTube comments for a content creator. Your role is to write friendly and helpful replies to viewer comments.
 
 Guidelines:

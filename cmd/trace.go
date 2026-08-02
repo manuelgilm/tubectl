@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/manuelgilm/tubectl/internal/trace"
+	"github.com/manuelgilm/tubectl/internal/mlflow"
 	"github.com/spf13/cobra"
 )
 
@@ -21,12 +21,12 @@ var (
 	}
 )
 
-func loadTraceClient() (*trace.Client, error) {
+func loadTraceClient() (*mlflow.Client, error) {
 	creds, err := resolveMLflowCreds()
 	if err != nil {
 		return nil, err
 	}
-	return trace.NewClient(creds.serverURL, creds.username, creds.password), nil
+	return mlflow.NewClient(creds.serverURL, creds.username, creds.password), nil
 }
 
 var traceGetCmd = &cobra.Command{
@@ -96,7 +96,7 @@ var traceCmd = &cobra.Command{
 	Short: "Inspect traces recorded on the MLflow server",
 }
 
-func printTrace(cmd *cobra.Command, tr *trace.Trace) {
+func printTrace(cmd *cobra.Command, tr *mlflow.Trace) {
 	info := tr.TraceInfo
 	out := cmd.OutOrStdout()
 
@@ -145,7 +145,7 @@ func printTrace(cmd *cobra.Command, tr *trace.Trace) {
 	}
 }
 
-func spanStatus(s trace.Span) string {
+func spanStatus(s mlflow.Span) string {
 	if s.Status == nil {
 		return "UNSET"
 	}
@@ -170,7 +170,7 @@ func formatNanoDuration(start, end int64) string {
 	return fmt.Sprintf("%.2fs", float64(ms)/1000)
 }
 
-func joinTags(tags []trace.KV) string {
+func joinTags(tags []mlflow.KV) string {
 	if len(tags) == 0 {
 		return ""
 	}

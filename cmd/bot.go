@@ -48,11 +48,7 @@ or --only-print to just display the reply without posting.`,
 		if err != nil {
 			return err
 		}
-		reply, err := GenerateAnswer(cmd, resolvedTemplate, answerCommentArgs.model, map[string]string{
-			"source":     "youtube-comment",
-			"comment_id": answerCommentArgs.commentID,
-			"video_id":   answerCommentArgs.videoID,
-		})
+		reply, err := GenerateAnswer(cmd, resolvedTemplate, answerCommentArgs.model)
 		if err != nil {
 			return err
 		}

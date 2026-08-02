@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/prompting"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +27,7 @@ Requires --query. Optionally set --model to override the default
 			return fmt.Errorf("loading openai client: %w", err)
 		}
 
-		messages, err := prompt.BuildMessagesYTBot(completeArgs.query, "")
+		messages, err := prompting.BuildMessagesYTBot(completeArgs.query, "")
 		if err != nil {
 			return fmt.Errorf("building messages: %w", err)
 		}

@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/manuelgilm/tubectl/internal"
-	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/mlflow"
 	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
 	"os"
@@ -66,7 +66,7 @@ Use --force to overwrite existing credentials.`,
 		credsPath := filepath.Join(home, "auth", "mlflow.json")
 
 		if !authMlflowArgs.forceLogin {
-			if _, err := prompt.LoadCredentials(credsPath); err == nil {
+			if _, err := mlflow.LoadCredentials(credsPath); err == nil {
 				fmt.Println("Already authenticated. Use --force to re-authenticate.")
 				return nil
 			}
@@ -84,7 +84,7 @@ Use --force to overwrite existing credentials.`,
 			return fmt.Errorf("provide --username and --password or set MLFLOW_TRACKING_USERNAME/MLFLOW_TRACKING_PASSWORD environment variables")
 		}
 
-		provider := prompt.NewMLflowProvider(credsPath)
+		provider := mlflow.NewMLflowProvider(credsPath)
 		return provider.Login(cmd.Context(), internal.Options{
 			Username:  username,
 			Password:  password,

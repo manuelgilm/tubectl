@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/mlflow"
 )
 
 func TestLoadMlflowClient_withEnvVars(t *testing.T) {
@@ -29,7 +29,7 @@ func TestLoadMlflowClient_fallbackToCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prompt.SaveCredentials(credsPath, &prompt.Credentials{
+	mlflow.SaveCredentials(credsPath, &mlflow.Credentials{
 		Username: "file-user",
 		Password: "file-pass",
 	})
@@ -66,7 +66,7 @@ func writeTestMlflowCreds(t *testing.T, home string) {
 	if err := os.MkdirAll(credsDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := prompt.SaveCredentials(filepath.Join(credsDir, "mlflow.json"), &prompt.Credentials{
+	if err := mlflow.SaveCredentials(filepath.Join(credsDir, "mlflow.json"), &mlflow.Credentials{
 		Username:  "file-user",
 		Password:  "file-pass",
 		ServerURL: "https://file.example.com",
