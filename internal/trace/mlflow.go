@@ -65,6 +65,9 @@ func (t *MLflowTracer) CreateSpan(ctx context.Context, req ai.SpanRequest) error
 		kv("gen_ai.response.finish_reasons", []string{req.FinishReason}),
 		kv("latency_ms", req.LatencyMs),
 	}
+	for k, v := range req.Tags {
+		attrs = append(attrs, kv("mlflow.traceTag."+k, v))
+	}
 	if req.Error != "" {
 		attrs = append(attrs, kv("error", req.Error))
 	}

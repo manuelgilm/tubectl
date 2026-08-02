@@ -70,6 +70,8 @@ func TestCreateSpan(t *testing.T) {
 			"gen_ai.request.model":           "gpt-4o-mini",
 			"gen_ai.provider.name":           "openai",
 			"gen_ai.response.finish_reasons": []string{"stop"},
+			"mlflow.traceTag.source":         "youtube-comment",
+			"mlflow.traceTag.comment_id":     "abc123",
 		} {
 			val, ok := gotAttrs[key]
 			if !ok {
@@ -117,6 +119,10 @@ func TestCreateSpan(t *testing.T) {
 		CompletionTokens: 20,
 		TotalTokens:      30,
 		LatencyMs:        1000,
+		Tags: map[string]string{
+			"source":     "youtube-comment",
+			"comment_id": "abc123",
+		},
 	})
 	if err != nil {
 		t.Fatalf("CreateSpan: %v", err)
