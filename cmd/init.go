@@ -3,12 +3,12 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"github.com/manuelgilm/tubectl/internal/prompt"
 	"github.com/manuelgilm/tubectl/internal/storage"
-	"gopkg.in/yaml.v3"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
+	"os"
+	"path/filepath"
 )
 
 // initCmd represents the init command
@@ -70,8 +70,6 @@ type OpenAIConfig struct {
 type BotPromptConfig struct {
 	AnswerCommentModel string `json:"answer_comment_model"`
 }
-
-
 
 func createFolder(path string) error {
 	// Create a folder if it does not exist

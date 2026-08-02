@@ -1,15 +1,15 @@
 package prompt
 
 import (
-	"os"
-	"gopkg.in/yaml.v3"
-	"strings"
 	"fmt"
+	"gopkg.in/yaml.v3"
+	"os"
+	"strings"
 )
 
 type PromptFile struct {
-	Template	string `yaml:"template"`
-	Vars		[]string 	`yaml:"vars"`
+	Template string   `yaml:"template"`
+	Vars     []string `yaml:"vars"`
 }
 
 func (p *PromptFile) Render(vars map[string]string) (string, error) {

@@ -114,5 +114,3 @@ func TestResolveMLflowCreds_envPairWins(t *testing.T) {
 		t.Errorf("serverURL = %q", creds.serverURL)
 	}
 }
-
-

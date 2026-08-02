@@ -1,4 +1,4 @@
-package youtube 
+package youtube
 
 import (
 	"bytes"
@@ -14,17 +14,17 @@ import (
 const defaultBaseURL = "https://www.googleapis.com/youtube/v3"
 
 type Client struct {
-	httpClient		*http.Client
-	baseURL			string
-	token			*Token
+	httpClient *http.Client
+	baseURL    string
+	token      *Token
 }
 
-
+// NewClient creates a YouTube Data API client using the given OAuth token.
 func NewClient(token *Token) *Client {
 	return &Client{
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		baseURL:    defaultBaseURL,
-		token: 		token,
+		token:      token,
 	}
 }
 
@@ -47,17 +47,17 @@ func (c *Client) get(ctx context.Context, path string, params map[string]string,
 
 	req.Header.Set("Authorization", "Bearer "+c.token.AccessToken)
 
-    resp, err := c.httpClient.Do(req)
-    if err != nil {
-        return fmt.Errorf("executing request: %w", err)
-    }
-    defer resp.Body.Close()
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("executing request: %w", err)
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusOK {
-        return youtubeAPIError(resp)
-    }
+	if resp.StatusCode != http.StatusOK {
+		return youtubeAPIError(resp)
+	}
 
-    return json.NewDecoder(resp.Body).Decode(out)
+	return json.NewDecoder(resp.Body).Decode(out)
 }
 
 func (c *Client) delete(ctx context.Context, path string, params map[string]string) error {
@@ -70,24 +70,24 @@ func (c *Client) delete(ctx context.Context, path string, params map[string]stri
 		return fmt.Errorf("building request: %w", err)
 	}
 
-    q := req.URL.Query()
-    for k, v := range params {
-        q.Set(k, v)
-    }
-    req.URL.RawQuery = q.Encode()
-    req.Header.Set("Authorization", "Bearer "+c.token.AccessToken)
+	q := req.URL.Query()
+	for k, v := range params {
+		q.Set(k, v)
+	}
+	req.URL.RawQuery = q.Encode()
+	req.Header.Set("Authorization", "Bearer "+c.token.AccessToken)
 
-    resp, err := c.httpClient.Do(req)
-    if err != nil {
-        return fmt.Errorf("executing request: %w", err)
-    }
-    defer resp.Body.Close()
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("executing request: %w", err)
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-        return youtubeAPIError(resp)
-    }
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return youtubeAPIError(resp)
+	}
 
-    return nil
+	return nil
 }
 
 func (c *Client) post(ctx context.Context, path string, params map[string]string, body any, out any) error {
@@ -142,7 +142,7 @@ func (c *Client) PostComment(ctx context.Context, videoID string, text string) e
 		},
 	}
 	err := c.post(ctx, "/commentThreads", map[string]string{
-			"part": "snippet",
+		"part": "snippet",
 	}, body, nil)
 	if err != nil {
 		return fmt.Errorf("posting a comment: %w", err)
@@ -150,28 +150,28 @@ func (c *Client) PostComment(ctx context.Context, videoID string, text string) e
 	return nil
 }
 func (c *Client) GetComments(ctx context.Context, videoID string, maxResults int, order string) ([]CommentThread, error) {
-    var result struct {
-        Items []CommentThread `json:"items"`
-    }
-    err := c.get(ctx, "/commentThreads", map[string]string{
-        "part":       "snippet",
-        "videoId":    videoID,
-        "maxResults": fmt.Sprintf("%d", maxResults),
-        "order":      order,
-    }, &result)
-    if err != nil {
-        return nil, err
-    }
-    return result.Items, nil
+	var result struct {
+		Items []CommentThread `json:"items"`
+	}
+	err := c.get(ctx, "/commentThreads", map[string]string{
+		"part":       "snippet",
+		"videoId":    videoID,
+		"maxResults": fmt.Sprintf("%d", maxResults),
+		"order":      order,
+	}, &result)
+	if err != nil {
+		return nil, err
+	}
+	return result.Items, nil
 }
 
 func (c *Client) GetComment(ctx context.Context, commentID string) (*Comment, error) {
 	var result struct {
-		Items	[]Comment `json:"items"`
+		Items []Comment `json:"items"`
 	}
 	if err := c.get(ctx, "/comments", map[string]string{
 		"part": "snippet",
-		"id": commentID,
+		"id":   commentID,
 	}, &result); err != nil {
 		return nil, fmt.Errorf("getting comment %s: %w", commentID, err)
 	}
@@ -183,28 +183,29 @@ func (c *Client) GetComment(ctx context.Context, commentID string) (*Comment, er
 }
 
 func (c *Client) DeleteComment(ctx context.Context, commentID string) error {
-    return c.delete(ctx, "/comments", map[string]string{"id": commentID})
+	return c.delete(ctx, "/comments", map[string]string{"id": commentID})
 }
 
 func (c *Client) ReplyToComment(ctx context.Context, parentID, text string) (*Comment, error) {
-	type snippet struct	{
-		ParentID	string 	`json:"parentId"`
-		TextOriginal	string	`json:"textOriginal"`
+	type snippet struct {
+		ParentID     string `json:"parentId"`
+		TextOriginal string `json:"textOriginal"`
 	}
-	type reqBody	struct {
-		Snippet	snippet		`json:"snippet"`
-	} 
+	type reqBody struct {
+		Snippet snippet `json:"snippet"`
+	}
 
 	var result Comment
 
 	body := reqBody{Snippet: snippet{ParentID: parentID, TextOriginal: text}}
 	if err := c.post(ctx, "/comments", map[string]string{
-			"part": "snippet",
+		"part": "snippet",
 	}, body, &result); err != nil {
 		return nil, fmt.Errorf("replying to comment %s: %w", parentID, err)
-	} 
+	}
 	return &result, nil
 }
+
 // ListCaptions returns the available caption tracks for a video.
 func (c *Client) ListCaptions(ctx context.Context, videoID string) (*CaptionListResponse, error) {
 	var result CaptionListResponse
@@ -216,7 +217,6 @@ func (c *Client) ListCaptions(ctx context.Context, videoID string) (*CaptionList
 	}
 	return &result, nil
 }
-
 
 // DownloadTranscript downloads a caption track and parses it into a Transcript.
 // It prefers the first human-made track in the requested language, falling back
@@ -256,14 +256,13 @@ func (c *Client) DownloadTranscript(ctx context.Context, videoID, language strin
 	}, nil
 }
 
-
 func (c *Client) GetVideo(ctx context.Context, videoID string) (*Video, error) {
 	var result struct {
-		Items 	[]Video	`json:"items"`
+		Items []Video `json:"items"`
 	}
 	err := c.get(ctx, "/videos", map[string]string{
-		"part":"snippet",
-		"id":videoID,
+		"part": "snippet",
+		"id":   videoID,
 	}, &result)
 	if err != nil {
 		return nil, err
@@ -314,8 +313,8 @@ func (c *Client) downloadCaption(ctx context.Context, captionID string) ([]byte,
 	return body, nil
 }
 
-
-//  Functions 
+//	Functions
+//
 // downloadPublicTranscript uses YouTube's undocumented timedtext endpoint to
 // fetch captions for public videos without requiring ownership.
 func (c *Client) downloadPublicTranscript(ctx context.Context, videoID, language string) (*Transcript, error) {

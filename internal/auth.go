@@ -1,10 +1,10 @@
 package internal
 
-
 import (
-	"time"
 	"context"
+	"time"
 )
+
 type Provider interface {
 	Name() string
 	Login(ctx context.Context, opts Options) error
@@ -13,15 +13,15 @@ type Provider interface {
 }
 
 type Options struct {
-	ClientID		string
-	ClientSecret	string
-	Scopes			[]string
-	Username		string 	// for Mlflow basic auth
-	Password		string 	// for Mlflow basic auth
-	ServerURL		string	// for Mlflow server
+	ClientID     string
+	ClientSecret string
+	Scopes       []string
+	Username     string // for Mlflow basic auth
+	Password     string // for Mlflow basic auth
+	ServerURL    string // for Mlflow server
 }
 
 type Status struct {
-	Authenticated	bool
-	ExpiresAt		time.Time
+	Authenticated bool
+	ExpiresAt     time.Time
 }

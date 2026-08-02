@@ -1,9 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/spf13/cobra"
-	"encoding/json"
 )
 
 var (
@@ -11,8 +11,8 @@ var (
 		commentID string
 	}
 	replyToCommentArgs struct {
-		commentID  string
-		text       string
+		commentID   string
+		text        string
 		autoApprove bool
 	}
 	deleteCommentArgs struct {
@@ -38,7 +38,7 @@ func confirmAction(cmd *cobra.Command, prompt string, autoApprove bool) error {
 }
 
 var replyToCommentCmd = &cobra.Command{
-	Use: "reply",
+	Use:   "reply",
 	Short: "Reply to a given comment using the YouTube Data API",
 	Long: `Replies to an existing comment thread. Requires --comment-id
 (the parent comment ID) and --text (the reply content).
@@ -65,7 +65,7 @@ Use --auto-approve to skip the prompt.`,
 }
 
 var deleteCommentCmd = &cobra.Command{
-	Use: "delete",
+	Use:   "delete",
 	Short: "Delete a comment",
 	Long: `Deletes a comment by ID. This action is irreversible.
 
@@ -90,12 +90,12 @@ Use --force to skip the prompt.`,
 }
 
 var getCommentCmd = &cobra.Command{
-	Use: "get",
+	Use:   "get",
 	Short: "Get a comment by ID",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadClient(cmd.Context())
 		if err != nil {
-return fmt.Errorf("loading client: %w", err)
+			return fmt.Errorf("loading client: %w", err)
 		}
 		comment, err := client.GetComment(cmd.Context(), getCommentArgs.commentID)
 		if err != nil {

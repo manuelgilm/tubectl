@@ -19,6 +19,7 @@ import (
 	otlpcommon "go.opentelemetry.io/proto/otlp/common/v1"
 	otlptrace "go.opentelemetry.io/proto/otlp/trace/v1"
 
+	"github.com/manuelgilm/tubectl/internal"
 	"github.com/manuelgilm/tubectl/internal/ai"
 )
 
@@ -30,7 +31,12 @@ type MLflowTracer struct {
 	http         *http.Client
 }
 
+// NewMLflowTracer creates an OTLP span exporter for an MLflow server. An empty
+// baseURL falls back to the default MLflow server.
 func NewMLflowTracer(baseURL, username, password string) *MLflowTracer {
+	if baseURL == "" {
+		baseURL = internal.DefaultMlflowServer
+	}
 	return &MLflowTracer{
 		baseURL:      baseURL,
 		username:     username,

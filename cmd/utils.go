@@ -5,16 +5,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
+	"github.com/manuelgilm/tubectl/internal"
 	"github.com/manuelgilm/tubectl/internal/ai"
 	"github.com/manuelgilm/tubectl/internal/prompt"
 	"github.com/manuelgilm/tubectl/internal/storage"
 	"github.com/manuelgilm/tubectl/internal/trace"
 	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
 // Function to get the tubectl home directoy
@@ -82,7 +83,7 @@ func resolveMLflowCreds() (mlflowCreds, error) {
 		}
 	}
 	if serverURL == "" {
-		serverURL = prompt.DefaultMlflowServer
+		serverURL = internal.DefaultMlflowServer
 	}
 	if username == "" || password == "" {
 		return mlflowCreds{}, fmt.Errorf("MLflow credentials not found. Set MLFLOW_TRACKING_USERNAME/MLFLOW_TRACKING_PASSWORD env vars or run 'tubectl auth mlflow --username <user> --password <pass>'")
@@ -132,9 +133,9 @@ func loadMlflowClient() (*prompt.Client, error) {
 func loadClient(ctx context.Context) (*youtube.Client, error) {
 	home, err := TubeCtlHome()
 	if err != nil {
-		return nil, err 
+		return nil, err
 	}
-	
+
 	tokenPath := filepath.Join(home, "auth", "youtube.json")
 	token, err := youtube.LoadToken(tokenPath)
 	if err != nil {
@@ -152,35 +153,34 @@ func loadClient(ctx context.Context) (*youtube.Client, error) {
 	return youtube.NewClient(token), nil
 }
 
-
 func ResolvePromptTemplate(cmd *cobra.Command, promptName, promptFile, commentText, transcriptText string) (string, error) {
 
 	var resolvedTemplate string
 	var err error
 	switch {
-		case promptName != "":
-			resolvedTemplate, err = ResolvePromptFromMLflowRegistry(cmd, promptName, commentText, transcriptText)
-			if err != nil {
-				return "", err
-			}
-		case promptFile != "":
-			resolvedTemplate, err = ResolvePromptFromFile(promptFile, commentText, transcriptText)
-			if err != nil {
-				return "", err
-			}
-		default:
-			resolvedTemplate, err = resolveBotPrompt(cmd, cmd.ErrOrStderr(), commentText, transcriptText)
-			if err != nil {
-				return "", fmt.Errorf("resolving prompt: %w", err)
-			}
+	case promptName != "":
+		resolvedTemplate, err = ResolvePromptFromMLflowRegistry(cmd, promptName, commentText, transcriptText)
+		if err != nil {
+			return "", err
 		}
+	case promptFile != "":
+		resolvedTemplate, err = ResolvePromptFromFile(promptFile, commentText, transcriptText)
+		if err != nil {
+			return "", err
+		}
+	default:
+		resolvedTemplate, err = resolveBotPrompt(cmd, cmd.ErrOrStderr(), commentText, transcriptText)
+		if err != nil {
+			return "", fmt.Errorf("resolving prompt: %w", err)
+		}
+	}
 	return resolvedTemplate, nil
 }
 
 func ResolvePromptFromFile(promptFile, commentText, transcriptText string) (string, error) {
 	pf, err := prompt.LoadPromptFile(promptFile)
 	if err != nil {
-		return "",fmt.Errorf("loading prompt file: %w", err)
+		return "", fmt.Errorf("loading prompt file: %w", err)
 	}
 	rendered, err := pf.Render(map[string]string{
 		"comment":    commentText,
@@ -208,7 +208,7 @@ func ResolvePromptFromMLflowRegistry(cmd *cobra.Command, promptName, commentText
 		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow prompt %q has no prompt text, falling back to default prompt\n", promptName)
 		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
 	}
-	rendered := renderTemplate(template, commentText, transcriptText)	
+	rendered := renderTemplate(template, commentText, transcriptText)
 	return rendered, nil
 }
 
@@ -274,7 +274,7 @@ func tryLocalPrompt(cfg Config, commentText, transcriptText string) (string, err
 
 	return rendered, nil
 }
-func ResolveComment(cmd *cobra.Command, commentID string) (string, error){
+func ResolveComment(cmd *cobra.Command, commentID string) (string, error) {
 	client, err := loadClient(cmd.Context())
 	if err != nil {
 		return "", err
@@ -283,7 +283,7 @@ func ResolveComment(cmd *cobra.Command, commentID string) (string, error){
 	if err != nil {
 		return "", fmt.Errorf("getting comment: %w", err)
 	}
-	commentText := comment.Snippet.TextDisplay	
+	commentText := comment.Snippet.TextDisplay
 	return commentText, nil
 }
 
@@ -291,7 +291,7 @@ func GenerateAnswer(cmd *cobra.Command, resolvedTemplate, model string, tags map
 	messages := []ai.Message{
 		{Role: "system", Content: resolvedTemplate},
 	}
-	
+
 	aiClient, err := loadOpenAIClient(cmd.Context(), model)
 	if err != nil {
 		return "", fmt.Errorf("loading AI client: %w", err)
@@ -330,9 +330,8 @@ func replyComment(cmd *cobra.Command, commentID, reply string, autoApprove bool)
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "Reply posted (ID: %s)\n", posted.ID)
 	fmt.Println(reply)
-	return nil	
+	return nil
 }
-
 
 func renderTemplate(template, commentText, transcriptText string) string {
 	r := strings.NewReplacer("{comment}", commentText, "{transcript}", transcriptText)

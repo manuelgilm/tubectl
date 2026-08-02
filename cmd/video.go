@@ -3,12 +3,13 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
-	"time"
-	"github.com/spf13/cobra"
 	"github.com/manuelgilm/tubectl/internal/storage"
 	"github.com/manuelgilm/tubectl/internal/youtube"
+	"github.com/spf13/cobra"
+	"strings"
+	"time"
 )
+
 var (
 	getVideoArgs struct {
 		videoID string
@@ -30,7 +31,7 @@ var (
 	}
 )
 var postCommentCmd = &cobra.Command{
-	Use: "comment",
+	Use:   "comment",
 	Short: "Post a top-level comment on a video",
 	Long: `Posts a top-level comment on a YouTube video.
 Requires --video-id and --text.
@@ -55,7 +56,7 @@ Use --auto-approve to skip the prompt.`,
 	},
 }
 var getTranscriptCmd = &cobra.Command{
-	Use: "get-transcript",
+	Use:   "get-transcript",
 	Short: "Get video transcript",
 	Long: `Downloads a video transcript from YouTube and prints it with
 timestamps. Results are cached locally for faster subsequent access.
@@ -112,7 +113,7 @@ Use --no-cache to bypass the cache and fetch fresh data.`,
 	},
 }
 var getCommentsCmd = &cobra.Command{
-	Use: "comments",
+	Use:   "comments",
 	Short: "List comments for a video",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -134,11 +135,10 @@ var getCommentsCmd = &cobra.Command{
 		fmt.Println(string(data))
 		return nil
 	},
-
 }
 var getVideoCmd = &cobra.Command{
-	Use:	"get",
-	Short:	"Get video details by ID",
+	Use:   "get",
+	Short: "Get video details by ID",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadClient(cmd.Context())
 		if err != nil {
