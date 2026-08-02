@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -102,8 +104,12 @@ func (t *MLflowTracer) CreateSpan(ctx context.Context, req ai.SpanRequest) error
 		return fmt.Errorf("marshal span: %w", err)
 	}
 
+	endpoint, err := url.JoinPath(t.baseURL, "v1", "traces")
+	if err != nil {
+		return fmt.Errorf("build span URL: %w", err)
+	}
 	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		t.baseURL+"/v1/traces", bytes.NewReader(protoData))
+		endpoint, bytes.NewReader(protoData))
 	if err != nil {
 		return fmt.Errorf("build span request: %w", err)
 	}
@@ -116,9 +122,12 @@ func (t *MLflowTracer) CreateSpan(ctx context.Context, req ai.SpanRequest) error
 	if err != nil {
 		return fmt.Errorf("create span: %w", err)
 	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode >= 400 {
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if msg := strings.TrimSpace(string(body)); msg != "" {
+			return fmt.Errorf("create span: %s: %s", resp.Status, msg)
+		}
 		return fmt.Errorf("create span: %s", resp.Status)
 	}
 	return nil

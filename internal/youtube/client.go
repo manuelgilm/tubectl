@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"net/http"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
+	"time"
 )
 
 const defaultBaseURL = "https://www.googleapis.com/youtube/v3"
@@ -20,7 +22,7 @@ type Client struct {
 
 func NewClient(token *Token) *Client {
 	return &Client{
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 		baseURL:    defaultBaseURL,
 		token: 		token,
 	}
@@ -28,7 +30,11 @@ func NewClient(token *Token) *Client {
 
 func (c *Client) get(ctx context.Context, path string, params map[string]string, out any) error {
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	endpoint, err := url.JoinPath(c.baseURL, path)
+	if err != nil {
+		return fmt.Errorf("building URL: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("building request: %w", err)
 	}
@@ -55,10 +61,14 @@ func (c *Client) get(ctx context.Context, path string, params map[string]string,
 }
 
 func (c *Client) delete(ctx context.Context, path string, params map[string]string) error {
-    req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+path, nil)
-    if err != nil {
-        return fmt.Errorf("building request: %w", err)
-    }
+	endpoint, err := url.JoinPath(c.baseURL, path)
+	if err != nil {
+		return fmt.Errorf("building URL: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("building request: %w", err)
+	}
 
     q := req.URL.Query()
     for k, v := range params {
@@ -87,7 +97,11 @@ func (c *Client) post(ctx context.Context, path string, params map[string]string
 		return fmt.Errorf("marshaling request body: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
+	endpoint, err := url.JoinPath(c.baseURL, path)
+	if err != nil {
+		return fmt.Errorf("building URL: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("building request: %w", err)
 	}
@@ -264,8 +278,11 @@ func (c *Client) GetVideo(ctx context.Context, videoID string) (*Video, error) {
 // downloadCaption fetches the raw caption body for a given caption ID in SRT format.
 func (c *Client) downloadCaption(ctx context.Context, captionID string) ([]byte, error) {
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.baseURL+"/captions/"+captionID, nil)
+	endpoint, err := url.JoinPath(c.baseURL, "captions", captionID)
+	if err != nil {
+		return nil, fmt.Errorf("building caption download URL: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building caption download request: %w", err)
 	}
@@ -302,8 +319,17 @@ func (c *Client) downloadCaption(ctx context.Context, captionID string) ([]byte,
 // downloadPublicTranscript uses YouTube's undocumented timedtext endpoint to
 // fetch captions for public videos without requiring ownership.
 func (c *Client) downloadPublicTranscript(ctx context.Context, videoID, language string) (*Transcript, error) {
-	url := "https://www.youtube.com/api/timedtext?fmt=srv1&lang=" + language + "&v=" + videoID
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	endpoint := (&url.URL{
+		Scheme: "https",
+		Host:   "www.youtube.com",
+		Path:   "/api/timedtext",
+		RawQuery: url.Values{
+			"fmt":  []string{"srv1"},
+			"lang": []string{language},
+			"v":    []string{videoID},
+		}.Encode(),
+	}).String()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building timedtext request: %w", err)
 	}

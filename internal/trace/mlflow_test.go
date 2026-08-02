@@ -150,6 +150,51 @@ func TestCreateSpan_ErrorStatus(t *testing.T) {
 	}
 }
 
+func TestCreateSpan_TrailingSlashBaseURL(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	tr := NewMLflowTracer(srv.URL+"/", "", "")
+	err := tr.CreateSpan(context.Background(), ai.SpanRequest{
+		TraceID:   "4bf92f3577b34da6a3ce929d0e0e4736",
+		Name:      "test",
+		StartTime: time.Now(),
+		EndTime:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSpan: %v", err)
+	}
+	if gotPath != "/v1/traces" {
+		t.Errorf("path = %q, want /v1/traces", gotPath)
+	}
+}
+
+func TestCreateSpan_ErrorBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error_code": "PERMISSION_DENIED", "message": "denied"}`))
+	}))
+	defer srv.Close()
+
+	tr := NewMLflowTracer(srv.URL, "", "")
+	err := tr.CreateSpan(context.Background(), ai.SpanRequest{
+		TraceID:   "4bf92f3577b34da6a3ce929d0e0e4736",
+		Name:      "test",
+		StartTime: time.Now(),
+		EndTime:   time.Now(),
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "denied") {
+		t.Errorf("error does not include response body: %v", err)
+	}
+}
+
 func TestWithExperimentID(t *testing.T) {
 	tr := NewMLflowTracer("http://localhost:5000", "", "")
 	if tr.experimentID != "0" {
