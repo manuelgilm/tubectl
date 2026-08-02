@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/youtube"
+	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"github.com/manuelgilm/tubectl/internal/prompt"
-	"github.com/manuelgilm/tubectl/internal/youtube"
-	"github.com/spf13/cobra"
 )
 
 func TestPromptFileRender(t *testing.T) {
@@ -157,5 +157,3 @@ func TestPrintTranscript(t *testing.T) {
 		t.Errorf("missing second line, got: %s", output)
 	}
 }
-
-

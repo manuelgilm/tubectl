@@ -18,5 +18,3 @@ func SaveToken(path string, token *Token) error {
 	}
 	return nil
 }
-
-

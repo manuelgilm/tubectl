@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"github.com/spf13/cobra"
 )
 
@@ -18,9 +18,9 @@ var promptCmd = &cobra.Command{
 	},
 }
 var listPromptsCmd = &cobra.Command{
-	Use: "list",
-	Short:"List available prompts",
-	Long: `It retrieves a list of prompts from the registry`,
+	Use:   "list",
+	Short: "List available prompts",
+	Long:  `It retrieves a list of prompts from the registry`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadMlflowClient()
 		if err != nil {
@@ -33,14 +33,14 @@ var listPromptsCmd = &cobra.Command{
 
 		bytes, err := json.MarshalIndent(registeredPrompts, "", "  ")
 		if err != nil {
-			return err 
+			return err
 		}
 		fmt.Println(string(bytes))
 		return nil
 	},
-} 
+}
 var getPromptCmd = &cobra.Command{
-	Use: "get",
+	Use:   "get",
 	Short: "Get Prompt from the Registry",
 	Long: `It retrieves a prompt from the prompt registry. 
 	The prompt registry is implemented with a remote mlflow
@@ -55,12 +55,12 @@ var getPromptCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		bytes, err := json.MarshalIndent(registeredPrompt,"", "  ")
+		bytes, err := json.MarshalIndent(registeredPrompt, "", "  ")
 		if err != nil {
 			return err
 		}
 		fmt.Println(string(bytes))
-		
+
 		return nil
 	},
 }

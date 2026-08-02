@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/manuelgilm/tubectl/internal"
 )
 
-const DefaultMlflowServer = "https://sandbox-mlflow.gilmanuel.com"
-
+// Client is a REST client for the MLflow prompt registry.
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
@@ -19,12 +21,14 @@ type Client struct {
 	password   string
 }
 
+// NewClient creates an MLflow REST client. An empty serverURL falls back to
+// the default MLflow server.
 func NewClient(username, password, serverURL string) *Client {
 	if serverURL == "" {
-		serverURL = DefaultMlflowServer
+		serverURL = internal.DefaultMlflowServer
 	}
 	return &Client{
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 		baseURL:    serverURL,
 		username:   username,
 		password:   password,
@@ -41,7 +45,9 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 		return fmt.Errorf("building request: %w", err)
 	}
 	req.URL.RawQuery = params.Encode()
-	req.SetBasicAuth(c.username, c.password)
+	if c.username != "" {
+		req.SetBasicAuth(c.username, c.password)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -50,7 +56,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("MLflow API error (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
@@ -77,12 +83,12 @@ func (c *Client) GetPrompt(ctx context.Context, name string) (*RegisteredModel, 
 }
 
 func (c *Client) ListPrompts(ctx context.Context) ([]ModelVersion, error) {
-    params := url.Values{}
-    params.Set("filter", `tag.mlflow.prompt.is_prompt = "true"`)
+	params := url.Values{}
+	params.Set("filter", `tag.mlflow.prompt.is_prompt = "true"`)
 
-    var resp ModelVersionSearchResponse
-    if err := c.get(ctx, "/api/2.0/mlflow/model-versions/search", params, &resp); err != nil {
-        return nil, fmt.Errorf("listing prompts: %w", err)
-    }
-    return resp.ModelVersions, nil
+	var resp ModelVersionSearchResponse
+	if err := c.get(ctx, "/api/2.0/mlflow/model-versions/search", params, &resp); err != nil {
+		return nil, fmt.Errorf("listing prompts: %w", err)
+	}
+	return resp.ModelVersions, nil
 }

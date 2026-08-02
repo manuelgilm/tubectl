@@ -6,9 +6,9 @@ import (
 
 func TestParseSRTTimecode(t *testing.T) {
 	tests := []struct {
-		input    string
-		wantSec  float64
-		wantOK   bool
+		input   string
+		wantSec float64
+		wantOK  bool
 	}{
 		{"00:00:00,000", 0, true},
 		{"00:01:30,500", 90.5, true},
@@ -31,10 +31,10 @@ func TestParseSRTTimecode(t *testing.T) {
 
 func TestParseSRTTimestampLine(t *testing.T) {
 	tests := []struct {
-		input       string
-		wantStart   float64
-		wantDur     float64
-		wantOK      bool
+		input     string
+		wantStart float64
+		wantDur   float64
+		wantOK    bool
 	}{
 		{"00:00:00,000 --> 00:00:05,000", 0, 5, true},
 		{"00:01:00,000 --> 00:01:30,500", 60, 30.5, true},

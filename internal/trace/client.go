@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/manuelgilm/tubectl/internal"
 )
 
 // Client is a REST client for reading trace metadata and spans from an MLflow
@@ -19,9 +22,14 @@ type Client struct {
 	password   string
 }
 
+// NewClient creates an MLflow trace REST client. An empty baseURL falls back
+// to the default MLflow server.
 func NewClient(baseURL, username, password string) *Client {
+	if baseURL == "" {
+		baseURL = internal.DefaultMlflowServer
+	}
 	return &Client{
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		username:   username,
 		password:   password,
@@ -154,8 +162,11 @@ func (c *Client) ListTraces(ctx context.Context, experimentIDs []string, maxResu
 	if len(experimentIDs) == 0 {
 		experimentIDs = []string{"0"}
 	}
-	if maxResults <= 0 || maxResults > 500 {
+	if maxResults <= 0 {
 		maxResults = 20
+	}
+	if maxResults > 500 {
+		maxResults = 500
 	}
 
 	params := url.Values{}
@@ -195,7 +206,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("MLflow API error (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 

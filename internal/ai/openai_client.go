@@ -39,12 +39,12 @@ type SpanRequest struct {
 }
 
 type Client struct {
-	apiKey 		string
-	model		string
-	baseURL		string
-	http		*http.Client
-	tracer		Tracer
-	tags		map[string]string
+	apiKey  string
+	model   string
+	baseURL string
+	http    *http.Client
+	tracer  Tracer
+	tags    map[string]string
 }
 
 // WithTracer sets a tracer on the client.
@@ -60,18 +60,17 @@ func (c *Client) WithTags(tags map[string]string) *Client {
 }
 
 // NewClient creates an OpenAI client with the given API key and model.
-// Model Defaults to "gpt-40-mini"
+// Model defaults to "gpt-4o-mini".
 func NewClient(apiKey string, model string) *Client {
-	if model =="" {
+	if model == "" {
 		model = "gpt-4o-mini"
 	}
 
 	return &Client{
-		apiKey: apiKey,
-		model: model,
+		apiKey:  apiKey,
+		model:   model,
 		baseURL: defaultBaseURL,
-		http: &http.Client{},
-
+		http:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
 

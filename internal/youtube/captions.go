@@ -8,18 +8,17 @@ type CaptionSnippet struct {
 	TrackKind    string `json:"trackKind"` // "standard", "asr" (auto-generated), "forced"
 	IsAutoSynced bool   `json:"isAutoSynced"`
 }
+
 // CaptionItem represents a single caption track.
 type CaptionItem struct {
-	ID      string          `json:"id"`
-	Snippet CaptionSnippet  `json:"snippet"`
+	ID      string         `json:"id"`
+	Snippet CaptionSnippet `json:"snippet"`
 }
 
 // CaptionListResponse is the response from captions.list.
 type CaptionListResponse struct {
 	Items []CaptionItem `json:"items"`
 }
-
-
 
 // ----- Transcript types -----
 
@@ -32,9 +31,9 @@ type TranscriptLine struct {
 
 // Transcript is the full transcript for a video, ready to be cached.
 type Transcript struct {
-	VideoID    string           `json:"video_id"`
-	Language   string           `json:"language"`
-	TrackKind  string           `json:"track_kind"`
-	CaptionID  string           `json:"caption_id"`
-	Lines      []TranscriptLine `json:"lines"`
+	VideoID   string           `json:"video_id"`
+	Language  string           `json:"language"`
+	TrackKind string           `json:"track_kind"`
+	CaptionID string           `json:"caption_id"`
+	Lines     []TranscriptLine `json:"lines"`
 }

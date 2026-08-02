@@ -1,13 +1,13 @@
 package cmd
 
 import (
-	"os"
-	"path/filepath"
+	"fmt"
 	"github.com/manuelgilm/tubectl/internal"
 	"github.com/manuelgilm/tubectl/internal/prompt"
 	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
-	"fmt"
+	"os"
+	"path/filepath"
 )
 
 var (
@@ -22,7 +22,7 @@ var (
 	}
 )
 var authYoutubeCmd = &cobra.Command{
-	Use: "youtube",
+	Use:   "youtube",
 	Short: "Authenticate with Youtube via OAuth 2.0",
 	Long: `Opens a browser for OAuth 2.0 consent. The obtained token is
 saved to ~/.tubectl/auth/youtube.json for reuse.
@@ -39,11 +39,11 @@ variables. Use --force to re-authenticate.`,
 		// check if a token already exists
 		if !authYoutubeArgs.forceLogin {
 			if token, err := youtube.LoadToken(tokenPath); err == nil {
-				if token.Valid(){
+				if token.Valid() {
 					fmt.Println("Already authenticated. Use `tubectl auth youtube --force` to re-authenticate.")
 					return nil
 				}
-			}			
+			}
 		}
 		provider := youtube.NewYoutubeProvider(tokenPath)
 		return provider.Login(cmd.Context(), internal.Options{})
@@ -96,7 +96,6 @@ Use --force to overwrite existing credentials.`,
 var authCmd = &cobra.Command{
 	Use:   "auth",
 	Short: "Manage authentication providers",
-
 }
 
 func init() {

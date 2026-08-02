@@ -23,23 +23,23 @@ var botCmd = &cobra.Command{
 }
 
 var answerCommentCmd = &cobra.Command{
-	Use: "answer-comment",
+	Use:   "answer-comment",
 	Short: "Generates an AI reply to a comment and optionally posts it",
-	Long:	`Generates an AI reply to a YouTube comment using the video transcript
+	Long: `Generates an AI reply to a YouTube comment using the video transcript
 as context, then optionally posts the reply.
 
 By default the generated reply is shown and the user is prompted for
 confirmation before posting. Use --auto-approve to skip the prompt
 or --only-print to just display the reply without posting.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-	var err error
-	transcript, err := GetTranscriptText(cmd, answerCommentArgs.videoID, answerCommentArgs.transcriptLanguage)
-	if err != nil {
-		return err
-	}
-	if transcript == "" {
-		fmt.Fprintln(cmd.ErrOrStderr(), "Warning: transcript not available, AI reply will have no video context")
-	}
+		var err error
+		transcript, err := GetTranscriptText(cmd, answerCommentArgs.videoID, answerCommentArgs.transcriptLanguage)
+		if err != nil {
+			return err
+		}
+		if transcript == "" {
+			fmt.Fprintln(cmd.ErrOrStderr(), "Warning: transcript not available, AI reply will have no video context")
+		}
 		commentText, err := ResolveComment(cmd, answerCommentArgs.commentID)
 		if err != nil {
 			return err
@@ -62,10 +62,9 @@ or --only-print to just display the reply without posting.`,
 			return nil
 		}
 
-		return replyComment(cmd, answerCommentArgs.commentID, reply, answerCommentArgs.autoApprove)		
+		return replyComment(cmd, answerCommentArgs.commentID, reply, answerCommentArgs.autoApprove)
 	},
 }
-
 
 func init() {
 	rootCmd.AddCommand(botCmd)
