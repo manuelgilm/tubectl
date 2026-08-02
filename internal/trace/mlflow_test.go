@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	otlpcollectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	otlpcommon "go.opentelemetry.io/proto/otlp/common/v1"
 
 	"github.com/manuelgilm/tubectl/internal/ai"
 )
@@ -55,6 +56,50 @@ func TestCreateSpan(t *testing.T) {
 		if span.StartTimeUnixNano == 0 || span.EndTimeUnixNano == 0 {
 			t.Error("missing timestamps")
 		}
+		gotAttrs := map[string]*otlpcommon.AnyValue{}
+		for _, attr := range span.Attributes {
+			gotAttrs[attr.Key] = attr.Value
+		}
+		for key, want := range map[string]any{
+			"mlflow.traceName":               "openai_chat",
+			"mlflow.spanInputs":              `{"messages":[{"role":"user","content":"Hi"}]}`,
+			"mlflow.spanOutputs":             `{"messages":[{"role":"assistant","content":"Hello!"}]}`,
+			"gen_ai.operation.name":          "chat",
+			"gen_ai.usage.input_tokens":      int64(10),
+			"gen_ai.usage.output_tokens":     int64(20),
+			"gen_ai.request.model":           "gpt-4o-mini",
+			"gen_ai.provider.name":           "openai",
+			"gen_ai.response.finish_reasons": []string{"stop"},
+			"mlflow.traceTag.source":         "youtube-comment",
+			"mlflow.traceTag.comment_id":     "abc123",
+		} {
+			val, ok := gotAttrs[key]
+			if !ok {
+				t.Errorf("missing attribute %q", key)
+				continue
+			}
+			switch want := want.(type) {
+			case string:
+				if got := val.GetStringValue(); got != want {
+					t.Errorf("attribute %q = %q, want %q", key, got, want)
+				}
+			case int64:
+				if got := val.GetIntValue(); got != want {
+					t.Errorf("attribute %q = %d, want %d", key, got, want)
+				}
+			case []string:
+				arr := val.GetArrayValue()
+				if arr == nil || len(arr.Values) != len(want) {
+					t.Errorf("attribute %q array length = %d, want %d", key, len(arr.Values), len(want))
+					continue
+				}
+				for i, s := range want {
+					if got := arr.Values[i].GetStringValue(); got != s {
+						t.Errorf("attribute %q[%d] = %q, want %q", key, i, got, s)
+					}
+				}
+			}
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -74,6 +119,10 @@ func TestCreateSpan(t *testing.T) {
 		CompletionTokens: 20,
 		TotalTokens:      30,
 		LatencyMs:        1000,
+		Tags: map[string]string{
+			"source":     "youtube-comment",
+			"comment_id": "abc123",
+		},
 	})
 	if err != nil {
 		t.Fatalf("CreateSpan: %v", err)
@@ -162,23 +211,42 @@ func TestKVHelper(t *testing.T) {
 		{"s", "hello"},
 		{"i", int64(42)},
 		{"f", float64(3.14)},
+		{"a", []string{"stop", "length"}},
 	}
 	for _, tc := range tests {
 		kv := kv(tc.key, tc.value)
 		if kv.Key != tc.key {
 			t.Errorf("key = %q", kv.Key)
 		}
+		if arr, ok := tc.value.([]string); ok {
+			got := kv.Value.GetArrayValue()
+			if got == nil || len(got.Values) != len(arr) {
+				t.Errorf("key %q: array = %v, want %v", tc.key, got, arr)
+				continue
+			}
+			for i, s := range arr {
+				if g := got.Values[i].GetStringValue(); g != s {
+					t.Errorf("key %q[%d] = %q, want %q", tc.key, i, g, s)
+				}
+			}
+		}
 	}
 }
 
-func TestFormatMessages(t *testing.T) {
+func TestFormatSpanInputs(t *testing.T) {
 	msgs := []ai.Message{
 		{Role: "user", Content: "Hi"},
-		{Role: "assistant", Content: "Hello!"},
 	}
-	got := formatMessages(msgs)
-	if !strings.Contains(got, "user") || !strings.Contains(got, "Hi") {
-		t.Errorf("formatMessages = %q", got)
+	got := formatSpanInputs(msgs)
+	if !strings.Contains(got, "messages") || !strings.Contains(got, "Hi") {
+		t.Errorf("formatSpanInputs = %q", got)
+	}
+}
+
+func TestFormatSpanOutputs(t *testing.T) {
+	got := formatSpanOutputs("Hello!")
+	if !strings.Contains(got, "assistant") || !strings.Contains(got, "Hello!") {
+		t.Errorf("formatSpanOutputs = %q", got)
 	}
 }
 

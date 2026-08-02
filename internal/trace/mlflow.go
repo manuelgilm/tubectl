@@ -54,15 +54,19 @@ func (t *MLflowTracer) CreateSpan(ctx context.Context, req ai.SpanRequest) error
 	}
 
 	attrs := []*otlpcommon.KeyValue{
-		kv("mlflow.traceName", "openai_completion"),
-		kv("model", req.Model),
-		kv("prompt", formatMessages(req.Messages)),
-		kv("response", req.Response),
-		kv("finish_reason", req.FinishReason),
-		kv("prompt_tokens", int64(req.PromptTokens)),
-		kv("completion_tokens", int64(req.CompletionTokens)),
-		kv("total_tokens", int64(req.TotalTokens)),
+		kv("mlflow.traceName", req.Name),
+		kv("mlflow.spanInputs", formatSpanInputs(req.Messages)),
+		kv("mlflow.spanOutputs", formatSpanOutputs(req.Response)),
+		kv("gen_ai.operation.name", "chat"),
+		kv("gen_ai.usage.input_tokens", int64(req.PromptTokens)),
+		kv("gen_ai.usage.output_tokens", int64(req.CompletionTokens)),
+		kv("gen_ai.request.model", req.Model),
+		kv("gen_ai.provider.name", "openai"),
+		kv("gen_ai.response.finish_reasons", []string{req.FinishReason}),
 		kv("latency_ms", req.LatencyMs),
+	}
+	for k, v := range req.Tags {
+		attrs = append(attrs, kv("mlflow.traceTag."+k, v))
 	}
 	if req.Error != "" {
 		attrs = append(attrs, kv("error", req.Error))
@@ -129,16 +133,32 @@ func kv(key string, value any) *otlpcommon.KeyValue {
 		v = &otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_IntValue{IntValue: val}}
 	case float64:
 		v = &otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_DoubleValue{DoubleValue: val}}
+	case []string:
+		values := make([]*otlpcommon.AnyValue, 0, len(val))
+		for _, s := range val {
+			values = append(values, &otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_StringValue{StringValue: s}})
+		}
+		v = &otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_ArrayValue{ArrayValue: &otlpcommon.ArrayValue{Values: values}}}
 	default:
 		v = &otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_StringValue{StringValue: fmt.Sprint(value)}}
 	}
 	return &otlpcommon.KeyValue{Key: key, Value: v}
 }
 
-func formatMessages(msgs []ai.Message) string {
-	data, err := json.Marshal(msgs)
+func formatSpanInputs(msgs []ai.Message) string {
+	data, err := json.Marshal(map[string]any{"messages": msgs})
 	if err != nil {
-		return "[]"
+		return `{"messages":[]}`
+	}
+	return string(data)
+}
+
+func formatSpanOutputs(response string) string {
+	data, err := json.Marshal(map[string]any{
+		"messages": []ai.Message{{Role: "assistant", Content: response}},
+	})
+	if err != nil {
+		return `{"messages":[]}`
 	}
 	return string(data)
 }

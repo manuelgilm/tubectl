@@ -51,10 +51,15 @@ func loadOpenAIClient(ctx context.Context, model string) (*ai.Client, error) {
 	return c, nil
 }
 
-func newMLflowTracer(_ context.Context) *trace.MLflowTracer {
-	if os.Getenv("MLFLOW_TRACING_ENABLED") != "true" {
-		return nil
-	}
+type mlflowCreds struct {
+	username  string
+	password  string
+	serverURL string
+}
+
+// resolveMLflowCreds resolves MLflow credentials from environment variables,
+// falling back to the credentials file written by `tubectl auth mlflow`.
+func resolveMLflowCreds() (mlflowCreds, error) {
 	username := os.Getenv("MLFLOW_TRACKING_USERNAME")
 	password := os.Getenv("MLFLOW_TRACKING_PASSWORD")
 	serverURL := os.Getenv("MLFLOW_SERVER_URL")
@@ -62,22 +67,40 @@ func newMLflowTracer(_ context.Context) *trace.MLflowTracer {
 	if username == "" || password == "" {
 		home, err := TubeCtlHome()
 		if err != nil {
-			return nil
+			return mlflowCreds{}, err
 		}
 		creds, err := prompt.LoadCredentials(filepath.Join(home, "auth", "mlflow.json"))
 		if err != nil {
-			return nil
+			return mlflowCreds{}, fmt.Errorf("MLflow credentials not found. Set MLFLOW_TRACKING_USERNAME/MLFLOW_TRACKING_PASSWORD env vars or run 'tubectl auth mlflow --username <user> --password <pass>'")
 		}
-		username = creds.Username
-		password = creds.Password
-		if creds.ServerURL != "" {
+		if username == "" {
+			username = creds.Username
+		}
+		if password == "" {
+			password = creds.Password
+		}
+		if serverURL == "" {
 			serverURL = creds.ServerURL
 		}
 	}
 	if serverURL == "" {
 		serverURL = prompt.DefaultMlflowServer
 	}
-	tracer := trace.NewMLflowTracer(serverURL, username, password)
+	if username == "" || password == "" {
+		return mlflowCreds{}, fmt.Errorf("MLflow credentials not found. Set MLFLOW_TRACKING_USERNAME/MLFLOW_TRACKING_PASSWORD env vars or run 'tubectl auth mlflow --username <user> --password <pass>'")
+	}
+	return mlflowCreds{username: username, password: password, serverURL: serverURL}, nil
+}
+
+func newMLflowTracer(_ context.Context) *trace.MLflowTracer {
+	if os.Getenv("MLFLOW_TRACING_ENABLED") != "true" {
+		return nil
+	}
+	creds, err := resolveMLflowCreds()
+	if err != nil {
+		return nil
+	}
+	tracer := trace.NewMLflowTracer(creds.serverURL, creds.username, creds.password)
 	if expID := os.Getenv("MLFLOW_EXPERIMENT_ID"); expID != "" {
 		tracer.WithExperimentID(expID)
 	}
@@ -101,23 +124,11 @@ func loadConfig() (Config, error) {
 }
 
 func loadMlflowClient() (*prompt.Client, error) {
-	username := os.Getenv("MLFLOW_TRACKING_USERNAME")
-	password := os.Getenv("MLFLOW_TRACKING_PASSWORD")
-
-	if username != "" && password != "" {
-		serverURL := os.Getenv("MLFLOW_SERVER_URL")
-		return prompt.NewClient(username, password, serverURL), nil
-	}
-
-	home, err := TubeCtlHome()
+	creds, err := resolveMLflowCreds()
 	if err != nil {
 		return nil, err
 	}
-	creds, err := prompt.LoadCredentials(filepath.Join(home, "auth", "mlflow.json"))
-	if err != nil {
-		return nil, fmt.Errorf("MLflow credentials not found. Set MLFLOW_TRACKING_USERNAME/MLFLOW_TRACKING_PASSWORD env vars or run 'tubectl auth mlflow --username <user> --password <pass>'")
-	}
-	return prompt.NewClient(creds.Username, creds.Password, creds.ServerURL), nil
+	return prompt.NewClient(creds.username, creds.password, creds.serverURL), nil
 }
 
 func loadClient(ctx context.Context) (*youtube.Client, error) {
@@ -278,7 +289,7 @@ func ResolveComment(cmd *cobra.Command, commentID string) (string, error){
 	return commentText, nil
 }
 
-func GenerateAnswer(cmd *cobra.Command, resolvedTemplate, model string) (string, error) {
+func GenerateAnswer(cmd *cobra.Command, resolvedTemplate, model string, tags map[string]string) (string, error) {
 	messages := []ai.Message{
 		{Role: "system", Content: resolvedTemplate},
 	}
@@ -286,6 +297,9 @@ func GenerateAnswer(cmd *cobra.Command, resolvedTemplate, model string) (string,
 	aiClient, err := loadOpenAIClient(cmd.Context(), model)
 	if err != nil {
 		return "", fmt.Errorf("loading AI client: %w", err)
+	}
+	if len(tags) > 0 {
+		aiClient.WithTags(tags)
 	}
 	reply, err := aiClient.Complete(cmd.Context(), messages)
 	if err != nil {

@@ -195,6 +195,30 @@ Query prompts from the MLflow prompt registry.
 
 Requires authentication via `tubectl auth mlflow` or `MLFLOW_TRACKING_USERNAME`/`MLFLOW_TRACKING_PASSWORD` environment variables.
 
+### `tubectl trace`
+
+Inspect traces recorded on the MLflow server. Reuses the same credentials as
+`tubectl prompt` (`tubectl auth mlflow` or environment variables).
+
+| Subcommand | Flags | Description |
+|---|---|---|
+| `get <traceID>` | `--trace-id` | Fetch a single trace (state, inputs/outputs previews, tags, per-span attributes and duration) |
+| `list` | `--experiment-id` (default `0`), `--max-results` (default 20, max 500) | List recent traces, newest first |
+
+The trace ID is the "request id" shown in the MLflow UI (e.g.
+`tr-4bf92f3577b34da6a3ce929d0e0e4736`):
+
+```bash
+tubectl trace list
+tubectl trace get tr-4bf92f3577b34da6a3ce929d0e0e4736
+```
+
+> **Note:** `get` calls the MLflow v3 trace API
+> (`/api/3.0/mlflow/traces/get`) to fetch full span data and previews, while
+> `list` uses the legacy v2 search API (`/api/2.0/mlflow/traces`) because it
+> accepts simple `experiment_ids` query params; the v3 search endpoint requires
+> a serialized `locations` payload and offers nothing extra for listing.
+
 ### MLflow Tracing
 
 `tubectl` can trace OpenAI API calls to an MLflow server using the
@@ -205,6 +229,7 @@ invocation creates a trace with:
 - Token usage (prompt, completion, total)
 - Latency and finish reason
 - Error information on failure
+- Trace tags (`bot answer-comment` attaches `source`, `comment_id`, and `video_id`)
 
 Enable it with `MLFLOW_TRACING_ENABLED=true` and configure MLflow credentials
 (shared with `tubectl prompt` and `tubectl auth mlflow`):
@@ -226,6 +251,9 @@ tubectl ai complete --query "Hello"
 Traces appear in the MLflow UI under the experiment specified by `MLFLOW_EXPERIMENT_ID` (default `"0"`). No tracing occurs when
 `MLFLOW_TRACING_ENABLED` is unset or not `"true"`. Trace failures (network,
 server errors) are logged to stderr and never block the command.
+
+Inspect recorded traces from the CLI with `tubectl trace list` and
+`tubectl trace get <traceID>` (see the `tubectl trace` section above).
 
 ## Output Format
 

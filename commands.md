@@ -9,6 +9,7 @@
 | `tubectl comment` | Operations with comments |
 | `tubectl ai` | Interact with LLMs (OpenAI) |
 | `tubectl bot` | YouTube automations powered by AI |
+| `tubectl trace` | Inspect traces recorded on the MLflow server |
 
 ## auth
 
@@ -59,6 +60,19 @@ Generate an AI reply to a comment using the video transcript as context, then op
 - `--only-print`: generate the reply but do not post
 - `--prompt-file`: use a custom YAML prompt template instead of the default
 - `--prompt-name`: fetch a prompt from the MLflow registry by name (takes precedence over `--prompt-file`)
+
+## trace
+
+Inspect traces recorded on the MLflow server. Reuses the same credentials as `tubectl prompt` (`tubectl auth mlflow` or env vars).
+
+| Subcommand | Flags | Description |
+|---|---|---|
+| `get <traceID>` | `--trace-id` | Fetch a single trace (state, inputs/outputs previews, tags, per-span attributes) |
+| `list` | `--experiment-id` (default `0`), `--max-results` (default 20, max 500) | List recent traces, newest first |
+
+The trace ID is the MLflow request id (e.g. `tr-4bf92f3577b34da6a3ce929d0e0e4736`). `bot answer-comment` traces are tagged with `source`, `comment_id`, and `video_id`.
+
+> **Note:** `get` uses the MLflow v3 trace API (`/api/3.0/mlflow/traces/get`) for full span data and previews; `list` uses the legacy v2 search API (`/api/2.0/mlflow/traces`) which takes simple `experiment_ids` query params.
 
 ## Notes
 

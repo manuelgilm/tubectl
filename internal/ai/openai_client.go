@@ -34,7 +34,8 @@ type SpanRequest struct {
 	CompletionTokens int
 	TotalTokens      int
 	LatencyMs        int64
-	Error            string // non-empty on failure
+	Tags             map[string]string // surfaced as MLflow trace tags
+	Error            string            // non-empty on failure
 }
 
 type Client struct {
@@ -43,11 +44,18 @@ type Client struct {
 	baseURL		string
 	http		*http.Client
 	tracer		Tracer
+	tags		map[string]string
 }
 
 // WithTracer sets a tracer on the client.
 func (c *Client) WithTracer(t Tracer) *Client {
 	c.tracer = t
+	return c
+}
+
+// WithTags sets trace tags attached to spans produced by this client.
+func (c *Client) WithTags(tags map[string]string) *Client {
+	c.tags = tags
 	return c
 }
 
@@ -109,6 +117,7 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (_ string, ca
 			CompletionTokens: completionTokens,
 			TotalTokens:      totalTokens,
 			LatencyMs:        time.Since(start).Milliseconds(),
+			Tags:             c.tags,
 			Error:            errStr,
 		}
 		if serr := c.tracer.CreateSpan(ctx, spanReq); serr != nil {
