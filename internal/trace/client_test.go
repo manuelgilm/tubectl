@@ -164,6 +164,22 @@ func TestClient_ListTraces_Defaults(t *testing.T) {
 	}
 }
 
+func TestClient_ListTraces_ClampOversize(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if got := q.Get("max_results"); got != "500" {
+			t.Errorf("max_results = %q, want 500", got)
+		}
+		w.Write([]byte(`{"traces": []}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "", "")
+	if _, err := c.ListTraces(context.Background(), nil, 600); err != nil {
+		t.Fatalf("ListTraces: %v", err)
+	}
+}
+
 func TestClient_Error(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

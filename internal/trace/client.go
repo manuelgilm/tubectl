@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Client is a REST client for reading trace metadata and spans from an MLflow
@@ -21,7 +22,7 @@ type Client struct {
 
 func NewClient(baseURL, username, password string) *Client {
 	return &Client{
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		username:   username,
 		password:   password,
@@ -154,8 +155,11 @@ func (c *Client) ListTraces(ctx context.Context, experimentIDs []string, maxResu
 	if len(experimentIDs) == 0 {
 		experimentIDs = []string{"0"}
 	}
-	if maxResults <= 0 || maxResults > 500 {
+	if maxResults <= 0 {
 		maxResults = 20
+	}
+	if maxResults > 500 {
+		maxResults = 500
 	}
 
 	params := url.Values{}
