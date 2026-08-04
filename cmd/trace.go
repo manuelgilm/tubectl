@@ -16,6 +16,7 @@ var (
 		traceID string
 	}
 	traceListArgs struct {
+		experiment   string
 		experimentID string
 		maxResults   int
 	}
@@ -61,14 +62,19 @@ var traceListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List recent traces",
 	Long: `Lists recent traces recorded on the MLflow server, most recent
-first. Use --experiment-id to filter by experiment (default 0) and
---max-results to control the page size (default 20, max 500).`,
+first. Use --experiment-id to filter by experiment ID (default 0), or
+--experiment to filter by experiment name (e.g. gateway/<endpoint>).
+Use --max-results to control the page size (default 20, max 500).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := loadTraceClient()
 		if err != nil {
 			return fmt.Errorf("loading MLflow client: %w", err)
 		}
-		items, err := client.ListTraces(cmd.Context(), []string{traceListArgs.experimentID}, traceListArgs.maxResults)
+		experimentID, err := resolveExperimentID(cmd, client, traceListArgs.experiment, traceListArgs.experimentID)
+		if err != nil {
+			return err
+		}
+		items, err := client.ListTraces(cmd.Context(), []string{experimentID}, traceListArgs.maxResults)
 		if err != nil {
 			return fmt.Errorf("listing traces: %w", err)
 		}
@@ -145,6 +151,36 @@ func printTrace(cmd *cobra.Command, tr *mlflow.Trace) {
 	}
 }
 
+// resolveExperimentID determines the experiment ID to query. If nameOrID is
+// non-empty and all digits, it is used as an ID directly; otherwise it is
+// treated as an experiment name and resolved to an ID. When nameOrID is empty,
+// fallbackID is returned unchanged.
+func resolveExperimentID(cmd *cobra.Command, client *mlflow.Client, nameOrID, fallbackID string) (string, error) {
+	if nameOrID == "" {
+		return fallbackID, nil
+	}
+	if isAllDigits(nameOrID) {
+		return nameOrID, nil
+	}
+	id, err := client.ExperimentIDByName(cmd.Context(), nameOrID)
+	if err != nil {
+		return "", fmt.Errorf("resolving experiment %q: %w", nameOrID, err)
+	}
+	if id == "" {
+		return "", fmt.Errorf("no active experiment named %q", nameOrID)
+	}
+	return id, nil
+}
+
+func isAllDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
+}
+
 func spanStatus(s mlflow.Span) string {
 	if s.Status == nil {
 		return "UNSET"
@@ -201,6 +237,7 @@ func init() {
 	traceGetCmd.Flags().StringVar(&traceGetArgs.traceID, "trace-id", "", "Trace ID to fetch (e.g. tr-...)")
 
 	traceCmd.AddCommand(traceListCmd)
+	traceListCmd.Flags().StringVar(&traceListArgs.experiment, "experiment", "", "Experiment name or ID to list traces for (overrides --experiment-id)")
 	traceListCmd.Flags().StringVar(&traceListArgs.experimentID, "experiment-id", "0", "Experiment ID to list traces for")
 	traceListCmd.Flags().IntVar(&traceListArgs.maxResults, "max-results", 20, "Maximum number of traces to return (max 500)")
 }
