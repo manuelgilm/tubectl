@@ -75,5 +75,5 @@ func init() {
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptFile, "prompt-file", "", "Path to a YAML prompt file (alternative to the default prompt)")
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptName, "prompt-name", "", "Prompt name in MLflow (takes precedence over --prompt-file)")
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.transcriptLanguage, "transcript-language", "en", "Language of the transcript (e.g. en, es)")
-	answerCommentCmd.Flags().StringVar(&answerCommentArgs.model, "model", "", "OpenAI model name (default: gpt-4o-mini)")
+	answerCommentCmd.Flags().StringVar(&answerCommentArgs.model, "model", "", "Gateway endpoint name (with MLflow creds) or OpenAI model (default: gpt-4o-mini)")
 }
