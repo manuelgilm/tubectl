@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/prompting"
 	"github.com/spf13/cobra"
 )
 
@@ -14,9 +14,11 @@ var completeArgs struct {
 var completeCmd = &cobra.Command{
 	Use:   "complete",
 	Short: "Use OpenAI completion AI",
-	Long: `Sends a prompt to the OpenAI API and prints the response.
-Requires --query. Optionally set --model to override the default
-(gpt-4o-mini). Requires OPENAI_API_KEY environment variable.`,
+	Long: `Sends a prompt to the OpenAI-compatible API and prints the response.
+Requires --query. When MLflow credentials are configured, the request is
+sent to the MLflow gateway and --model names the gateway endpoint;
+otherwise it falls back to OpenAI (--model is an OpenAI model, default
+gpt-4o-mini, requiring OPENAI_API_KEY).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if completeArgs.query == "" {
 			return fmt.Errorf("--query is required")
@@ -27,7 +29,7 @@ Requires --query. Optionally set --model to override the default
 			return fmt.Errorf("loading openai client: %w", err)
 		}
 
-		messages, err := prompt.BuildMessagesYTBot(completeArgs.query, "")
+		messages, err := prompting.BuildMessagesYTBot(completeArgs.query, "")
 		if err != nil {
 			return fmt.Errorf("building messages: %w", err)
 		}
@@ -50,7 +52,7 @@ var aiCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(aiCmd)
 	aiCmd.AddCommand(completeCmd)
-	completeCmd.Flags().StringVar(&completeArgs.model, "model", "", "Name of the API model. Defaults to gpt-4o-mini")
+	completeCmd.Flags().StringVar(&completeArgs.model, "model", "", "Gateway endpoint name (with MLflow creds) or OpenAI model. Defaults to gpt-4o-mini")
 	completeCmd.Flags().StringVar(&completeArgs.query, "query", "", "User prompt text")
 	completeCmd.MarkFlagRequired("query")
 }

@@ -48,11 +48,7 @@ or --only-print to just display the reply without posting.`,
 		if err != nil {
 			return err
 		}
-		reply, err := GenerateAnswer(cmd, resolvedTemplate, answerCommentArgs.model, map[string]string{
-			"source":     "youtube-comment",
-			"comment_id": answerCommentArgs.commentID,
-			"video_id":   answerCommentArgs.videoID,
-		})
+		reply, err := GenerateAnswer(cmd, resolvedTemplate, answerCommentArgs.model)
 		if err != nil {
 			return err
 		}
@@ -79,5 +75,5 @@ func init() {
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptFile, "prompt-file", "", "Path to a YAML prompt file (alternative to the default prompt)")
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptName, "prompt-name", "", "Prompt name in MLflow (takes precedence over --prompt-file)")
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.transcriptLanguage, "transcript-language", "en", "Language of the transcript (e.g. en, es)")
-	answerCommentCmd.Flags().StringVar(&answerCommentArgs.model, "model", "", "OpenAI model name (default: gpt-4o-mini)")
+	answerCommentCmd.Flags().StringVar(&answerCommentArgs.model, "model", "", "Gateway endpoint name (with MLflow creds) or OpenAI model (default: gpt-4o-mini)")
 }

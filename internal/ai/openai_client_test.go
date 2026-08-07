@@ -3,27 +3,12 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
-
-// mockTracer records CreateSpan calls for testing.
-type mockTracer struct {
-	spanReqs []SpanRequest
-}
-
-func (m *mockTracer) CreateSpan(_ context.Context, req SpanRequest) error {
-	m.spanReqs = append(m.spanReqs, req)
-	return nil
-}
-
-func (m *mockTracer) assertSpanCount(t *testing.T, n int) {
-	t.Helper()
-	if len(m.spanReqs) != n {
-		t.Errorf("CreateSpan called %d times, want %d", len(m.spanReqs), n)
-	}
-}
 
 func TestNewClient(t *testing.T) {
 	t.Run("default model", func(t *testing.T) {
@@ -91,6 +76,37 @@ func TestComplete(t *testing.T) {
 			t.Fatalf("Complete: %v", err)
 		}
 		if reply != "Hello from AI" {
+			t.Errorf("reply = %q", reply)
+		}
+	})
+
+	t.Run("basic auth header", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, pass, ok := r.BasicAuth()
+			if !ok || user != "mlflow-user" || pass != "secret" {
+				t.Errorf("basic auth = %q/%q (ok=%v), want mlflow-user/secret", user, pass, ok)
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{
+				"choices": []any{
+					map[string]any{
+						"message": map[string]any{"content": "via gateway"},
+					},
+				},
+			})
+		}))
+		defer srv.Close()
+
+		c := NewClient("irrelevant", "gpt-4o-mini").
+			WithBaseURL(srv.URL).
+			WithHTTPClient(srv.Client()).
+			WithBasicAuth("mlflow-user", "secret")
+
+		reply, err := c.Complete(context.Background(), []Message{{Role: "user", Content: "Hi"}})
+		if err != nil {
+			t.Fatalf("Complete: %v", err)
+		}
+		if reply != "via gateway" {
 			t.Errorf("reply = %q", reply)
 		}
 	})
@@ -179,107 +195,84 @@ func TestComplete(t *testing.T) {
 	})
 }
 
-func TestCompleteWithTracer(t *testing.T) {
-	t.Run("tracer called on success", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]any{
-				"choices": []any{
-					map[string]any{
-						"message":       map[string]any{"content": "Hello"},
-						"finish_reason": "stop",
-					},
-				},
-				"usage": map[string]any{
-					"prompt_tokens":     10,
-					"completion_tokens": 20,
-					"total_tokens":      30,
-				},
-			})
-		}))
-		defer srv.Close()
+func TestWithBasicAuth(t *testing.T) {
+	c := NewClient("key", "gpt-4o-mini")
+	if c.username != "" || c.password != "" {
+		t.Error("expected empty credentials initially")
+	}
+	c.WithBasicAuth("user", "pass")
+	if c.username != "user" || c.password != "pass" {
+		t.Errorf("credentials = %q/%q", c.username, c.password)
+	}
 
-		tr := &mockTracer{}
+	c2 := NewClient("key", "gpt-4o-mini").WithBaseURL("http://gateway")
+	if c2.BaseURL() != "http://gateway" {
+		t.Errorf("BaseURL = %q", c2.BaseURL())
+	}
+}
+
+func TestWithBaseURLAndHTTPClient(t *testing.T) {
+	c := NewClient("key", "gpt-4o-mini")
+	if c.BaseURL() != defaultBaseURL {
+		t.Errorf("BaseURL = %q, want %q", c.BaseURL(), defaultBaseURL)
+	}
+	c.WithBaseURL("http://custom")
+	if c.BaseURL() != "http://custom" {
+		t.Errorf("BaseURL = %q", c.BaseURL())
+	}
+}
+
+func TestConnectivityError(t *testing.T) {
+	t.Run("network failure wrapped as ConnectivityError", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		url := srv.URL
+		srv.Close()
+
 		c := &Client{
 			apiKey:  "sk-test",
 			model:   "gpt-4o-mini",
-			baseURL: srv.URL,
+			baseURL: url,
 			http:    srv.Client(),
-			tracer:  tr,
 		}
 
-		reply, err := c.Complete(context.Background(), []Message{{Role: "user", Content: "Hi"}})
-		if err != nil {
-			t.Fatalf("Complete: %v", err)
+		_, err := c.Complete(context.Background(), []Message{{Role: "user", Content: "Hi"}})
+		if err == nil {
+			t.Fatal("expected error for closed server")
 		}
-		if reply != "Hello" {
-			t.Errorf("reply = %q", reply)
-		}
-
-		tr.assertSpanCount(t, 1)
-
-		req := tr.spanReqs[0]
-		if req.Model != "gpt-4o-mini" {
-			t.Errorf("model = %q", req.Model)
-		}
-		if req.Response != "Hello" {
-			t.Errorf("response = %q", req.Response)
-		}
-		if req.FinishReason != "stop" {
-			t.Errorf("finish_reason = %q", req.FinishReason)
-		}
-		if req.PromptTokens != 10 || req.CompletionTokens != 20 || req.TotalTokens != 30 {
-			t.Errorf("usage: %+v", req)
-		}
-		if req.Error != "" {
-			t.Errorf("error = %q, want empty", req.Error)
-		}
-		if len(req.TraceID) != 32 {
-			t.Errorf("TraceID length = %d, want 32", len(req.TraceID))
+		var connErr *ConnectivityError
+		if !errors.As(err, &connErr) {
+			t.Errorf("expected *ConnectivityError, got %T", err)
 		}
 	})
 
-	t.Run("tracer called on api error", func(t *testing.T) {
+	t.Run("http 4xx is NOT a ConnectivityError", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]any{
-				"error": map[string]any{"message": "bad key"},
-			})
+			w.Write([]byte(`{"error": {"message": "bad key"}}`))
 		}))
 		defer srv.Close()
 
-		tr := &mockTracer{}
 		c := &Client{
 			apiKey:  "bad",
 			model:   "gpt-4o-mini",
 			baseURL: srv.URL,
 			http:    srv.Client(),
-			tracer:  tr,
 		}
 
 		_, err := c.Complete(context.Background(), nil)
 		if err == nil {
 			t.Fatal("expected error")
 		}
-
-		tr.assertSpanCount(t, 1)
-
-		req := tr.spanReqs[0]
-		if req.Error == "" {
-			t.Error("expected non-empty error in span")
+		var connErr *ConnectivityError
+		if errors.As(err, &connErr) {
+			t.Errorf("did not expect *ConnectivityError for HTTP response")
 		}
 	})
 
-	t.Run("tracer not called when nil", func(t *testing.T) {
+	t.Run("200 empty choices is NOT a ConnectivityError", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]any{
-				"choices": []any{
-					map[string]any{
-						"message": map[string]any{"content": "Hello"},
-					},
-				},
-			})
+			json.NewEncoder(w).Encode(map[string]any{"choices": []any{}})
 		}))
 		defer srv.Close()
 
@@ -290,21 +283,60 @@ func TestCompleteWithTracer(t *testing.T) {
 			http:    srv.Client(),
 		}
 
-		_, err := c.Complete(context.Background(), []Message{{Role: "user", Content: "Hi"}})
-		if err != nil {
-			t.Fatalf("Complete: %v", err)
+		_, err := c.Complete(context.Background(), nil)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		var connErr *ConnectivityError
+		if errors.As(err, &connErr) {
+			t.Errorf("did not expect *ConnectivityError for empty choices")
 		}
 	})
 }
 
-func TestWithTracer(t *testing.T) {
-	c := NewClient("key", "gpt-4o-mini")
-	if c.tracer != nil {
-		t.Error("expected nil tracer initially")
-	}
-	tr := &mockTracer{}
-	c.WithTracer(tr)
-	if c.tracer != tr {
-		t.Error("WithTracer did not set tracer")
-	}
+func TestComplete_StatusCode(t *testing.T) {
+	t.Run("non-json error body included in message", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadGateway)
+			w.Write([]byte("upstream exploded"))
+		}))
+		defer srv.Close()
+
+		c := &Client{
+			apiKey:  "sk-test",
+			model:   "gpt-4o-mini",
+			baseURL: srv.URL,
+			http:    srv.Client(),
+		}
+
+		_, err := c.Complete(context.Background(), nil)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "502") || !strings.Contains(err.Error(), "upstream exploded") {
+			t.Errorf("error = %v", err)
+		}
+	})
+
+	t.Run("empty body on non-2xx still errors", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusGatewayTimeout)
+		}))
+		defer srv.Close()
+
+		c := &Client{
+			apiKey:  "sk-test",
+			model:   "gpt-4o-mini",
+			baseURL: srv.URL,
+			http:    srv.Client(),
+		}
+
+		_, err := c.Complete(context.Background(), nil)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "504") {
+			t.Errorf("error = %v", err)
+		}
+	})
 }

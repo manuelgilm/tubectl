@@ -1,4 +1,4 @@
-package prompt
+package mlflow
 
 import (
 	"context"
@@ -13,34 +13,35 @@ import (
 	"github.com/manuelgilm/tubectl/internal"
 )
 
-// Client is a REST client for the MLflow prompt registry.
+// Client is a REST client for an MLflow tracking server: the prompt registry
+// and trace metadata/read+write operations.
 type Client struct {
 	httpClient *http.Client
-	baseURL    string
+	url        *url.URL
 	username   string
 	password   string
 }
 
-// NewClient creates an MLflow REST client. An empty serverURL falls back to
-// the default MLflow server.
+// NewClient creates an MLflow REST client. An empty serverURL falls back to the
+// default MLflow server.
 func NewClient(username, password, serverURL string) *Client {
 	if serverURL == "" {
 		serverURL = internal.DefaultMlflowServer
 	}
+	u, err := url.Parse(serverURL)
+	if err != nil {
+		u, _ = url.Parse("http://localhost:5000")
+	}
 	return &Client{
 		httpClient: &http.Client{Timeout: 10 * time.Second},
-		baseURL:    serverURL,
+		url:        u,
 		username:   username,
 		password:   password,
 	}
 }
 
 func (c *Client) get(ctx context.Context, path string, params url.Values, out any) error {
-	u, err := url.JoinPath(c.baseURL, path)
-	if err != nil {
-		return fmt.Errorf("building URL: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url.JoinPath(path).String(), nil)
 	if err != nil {
 		return fmt.Errorf("building request: %w", err)
 	}
@@ -70,25 +71,21 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 	return nil
 }
 
-func (c *Client) GetPrompt(ctx context.Context, name string) (*RegisteredModel, error) {
-	params := url.Values{}
-	params.Set("name", name)
-
-	var resp RegisteredModelResponse
-	if err := c.get(ctx, "/api/2.0/mlflow/registered-models/get", params, &resp); err != nil {
-		return nil, fmt.Errorf("fetching prompt %q: %w", name, err)
+// Ping verifies the MLflow server is reachable. MLflow's /health endpoint
+// returns "OK" with status 200 and requires no authentication.
+func (c *Client) Ping(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url.JoinPath("/health").String(), nil)
+	if err != nil {
+		return fmt.Errorf("building health request: %w", err)
 	}
-
-	return &resp.RegisteredModel, nil
-}
-
-func (c *Client) ListPrompts(ctx context.Context) ([]ModelVersion, error) {
-	params := url.Values{}
-	params.Set("filter", `tag.mlflow.prompt.is_prompt = "true"`)
-
-	var resp ModelVersionSearchResponse
-	if err := c.get(ctx, "/api/2.0/mlflow/model-versions/search", params, &resp); err != nil {
-		return nil, fmt.Errorf("listing prompts: %w", err)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("MLflow server unreachable: %w", err)
 	}
-	return resp.ModelVersions, nil
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 128))
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "OK") {
+		return fmt.Errorf("MLflow server unhealthy (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
 }

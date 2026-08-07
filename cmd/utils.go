@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/manuelgilm/tubectl/internal"
 	"github.com/manuelgilm/tubectl/internal/ai"
-	"github.com/manuelgilm/tubectl/internal/prompt"
+	"github.com/manuelgilm/tubectl/internal/mlflow"
+	"github.com/manuelgilm/tubectl/internal/prompting"
 	"github.com/manuelgilm/tubectl/internal/storage"
-	"github.com/manuelgilm/tubectl/internal/trace"
 	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
 	"io"
@@ -32,24 +33,34 @@ func TubeCtlHome() (string, error) {
 }
 
 func loadOpenAIClient(ctx context.Context, model string) (*ai.Client, error) {
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
+
+	// Prefer the MLflow gateway (OpenAI-compatible) for completions.
+	creds, err := resolveMLflowCreds()
+	if err == nil {
+		c := ai.NewClient("", model).
+			WithBaseURL(creds.serverURL + "/gateway/mlflow/v1")
+		return c.WithBasicAuth(creds.username, creds.password), nil
+	}
+
+	// Fall back to OpenAI directly when MLflow credentials are unavailable.
+	return newOpenAIClient(model)
+}
+
+// newOpenAIClient builds a direct OpenAI client from the API key.
+func newOpenAIClient(model string) (*ai.Client, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
 		if cfg, err := loadConfig(); err == nil {
 			apiKey = cfg.OpenAI.APIKey
 		}
 	}
-
-	if model == "" {
-		model = "gpt-4o-mini"
-	}
 	if apiKey == "" {
 		return nil, fmt.Errorf("OPENAI_API_KEY not found in environment variables or config.json")
 	}
-	c := ai.NewClient(apiKey, model)
-	if tracer := newMLflowTracer(ctx); tracer != nil {
-		c.WithTracer(tracer)
-	}
-	return c, nil
+	return ai.NewClient(apiKey, model), nil
 }
 
 type mlflowCreds struct {
@@ -72,7 +83,7 @@ func resolveMLflowCreds() (mlflowCreds, error) {
 		if err != nil {
 			return mlflowCreds{}, err
 		}
-		creds, err := prompt.LoadCredentials(filepath.Join(home, "auth", "mlflow.json"))
+		creds, err := mlflow.LoadCredentials(filepath.Join(home, "auth", "mlflow.json"))
 		if err != nil {
 			return mlflowCreds{}, fmt.Errorf("MLflow credentials not found. Set MLFLOW_TRACKING_USERNAME/MLFLOW_TRACKING_PASSWORD env vars or run 'tubectl auth mlflow --username <user> --password <pass>'")
 		}
@@ -91,21 +102,6 @@ func resolveMLflowCreds() (mlflowCreds, error) {
 	return mlflowCreds{username: username, password: password, serverURL: serverURL}, nil
 }
 
-func newMLflowTracer(_ context.Context) *trace.MLflowTracer {
-	if os.Getenv("MLFLOW_TRACING_ENABLED") != "true" {
-		return nil
-	}
-	creds, err := resolveMLflowCreds()
-	if err != nil {
-		return nil
-	}
-	tracer := trace.NewMLflowTracer(creds.serverURL, creds.username, creds.password)
-	if expID := os.Getenv("MLFLOW_EXPERIMENT_ID"); expID != "" {
-		tracer.WithExperimentID(expID)
-	}
-	return tracer
-}
-
 func loadConfig() (Config, error) {
 	home, err := TubeCtlHome()
 	if err != nil {
@@ -122,12 +118,12 @@ func loadConfig() (Config, error) {
 	return cfg, nil
 }
 
-func loadMlflowClient() (*prompt.Client, error) {
+func loadMlflowClient() (*mlflow.Client, error) {
 	creds, err := resolveMLflowCreds()
 	if err != nil {
 		return nil, err
 	}
-	return prompt.NewClient(creds.username, creds.password, creds.serverURL), nil
+	return mlflow.NewClient(creds.username, creds.password, creds.serverURL), nil
 }
 
 func loadClient(ctx context.Context) (*youtube.Client, error) {
@@ -178,7 +174,7 @@ func ResolvePromptTemplate(cmd *cobra.Command, promptName, promptFile, commentTe
 }
 
 func ResolvePromptFromFile(promptFile, commentText, transcriptText string) (string, error) {
-	pf, err := prompt.LoadPromptFile(promptFile)
+	pf, err := prompting.LoadPromptFile(promptFile)
 	if err != nil {
 		return "", fmt.Errorf("loading prompt file: %w", err)
 	}
@@ -196,17 +192,17 @@ func ResolvePromptFromMLflowRegistry(cmd *cobra.Command, promptName, commentText
 	mlflowClient, err := loadMlflowClient()
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow client unavailable (%v), falling back to default prompt\n", err)
-		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
+		return prompting.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 	registered, err := mlflowClient.GetPrompt(cmd.Context(), promptName)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow prompt %q fetch failed (%v), falling back to default prompt\n", promptName, err)
-		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
+		return prompting.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 	template := registered.PromptText()
 	if template == "" {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow prompt %q has no prompt text, falling back to default prompt\n", promptName)
-		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
+		return prompting.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 	rendered := renderTemplate(template, commentText, transcriptText)
 	return rendered, nil
@@ -248,7 +244,7 @@ func resolveBotPrompt(cmd *cobra.Command, w io.Writer, commentText, transcriptTe
 func tryLocalPrompt(cfg Config, commentText, transcriptText string) (string, error) {
 	home, err := TubeCtlHome()
 	if err != nil {
-		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
+		return prompting.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 
 	modelName := cfg.BotPrompt.AnswerCommentModel
@@ -259,9 +255,9 @@ func tryLocalPrompt(cfg Config, commentText, transcriptText string) (string, err
 		modelName = "yt-bot-answer-comment"
 	}
 
-	pf, err := prompt.LoadPromptFile(filepath.Join(home, "prompts", modelName+".yaml"))
+	pf, err := prompting.LoadPromptFile(filepath.Join(home, "prompts", modelName+".yaml"))
 	if err != nil {
-		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
+		return prompting.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 
 	rendered, err := pf.Render(map[string]string{
@@ -269,7 +265,7 @@ func tryLocalPrompt(cfg Config, commentText, transcriptText string) (string, err
 		"transcript": transcriptText,
 	})
 	if err != nil {
-		return prompt.DefaultBotPromptText(commentText, transcriptText), nil
+		return prompting.DefaultBotPromptText(commentText, transcriptText), nil
 	}
 
 	return rendered, nil
@@ -287,7 +283,7 @@ func ResolveComment(cmd *cobra.Command, commentID string) (string, error) {
 	return commentText, nil
 }
 
-func GenerateAnswer(cmd *cobra.Command, resolvedTemplate, model string, tags map[string]string) (string, error) {
+func GenerateAnswer(cmd *cobra.Command, resolvedTemplate, model string) (string, error) {
 	messages := []ai.Message{
 		{Role: "system", Content: resolvedTemplate},
 	}
@@ -296,14 +292,31 @@ func GenerateAnswer(cmd *cobra.Command, resolvedTemplate, model string, tags map
 	if err != nil {
 		return "", fmt.Errorf("loading AI client: %w", err)
 	}
-	if len(tags) > 0 {
-		aiClient.WithTags(tags)
-	}
 	reply, err := aiClient.Complete(cmd.Context(), messages)
-	if err != nil {
+	if err == nil {
+		return reply, nil
+	}
+	// Fall back to OpenAI directly only when the primary backend was the MLflow
+	// gateway AND the failure was connectivity (server unreachable). A server
+	// that responded (HTTP error, empty choices, ...) indicates a config
+	// problem and must surface loudly instead of silently using OpenAI.
+	if !strings.Contains(aiClient.BaseURL(), "/gateway/mlflow/v1") {
 		return "", fmt.Errorf("AI completion failed: %w", err)
 	}
-	return reply, nil
+	var connErr *ai.ConnectivityError
+	if !errors.As(err, &connErr) {
+		return "", fmt.Errorf("AI completion failed: %w", err)
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow gateway unreachable (%v), falling back to OpenAI\n", connErr)
+	openaiClient, oerr := newOpenAIClient(model)
+	if oerr != nil {
+		return "", fmt.Errorf("AI completion failed: %w", oerr)
+	}
+	openaiReply, ok := openaiClient.Complete(cmd.Context(), messages)
+	if ok != nil {
+		return "", fmt.Errorf("AI completion failed: %w", ok)
+	}
+	return openaiReply, nil
 }
 
 func replyComment(cmd *cobra.Command, commentID, reply string, autoApprove bool) error {

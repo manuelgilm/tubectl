@@ -1,4 +1,4 @@
-package prompt
+package mlflow
 
 import (
 	"context"
@@ -120,7 +120,6 @@ func TestMLflowProviderLogout(t *testing.T) {
 			t.Error("credentials file still exists")
 		}
 	})
-
 }
 
 func TestMLflowProviderStatus(t *testing.T) {

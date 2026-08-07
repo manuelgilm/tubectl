@@ -3,59 +3,67 @@ package ai
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
-	"os"
+	"strings"
 	"time"
 )
 
 const defaultBaseURL = "https://api.openai.com/v1"
 
-// Tracer is an optional observer of LLM calls.
-type Tracer interface {
-	CreateSpan(ctx context.Context, req SpanRequest) error
+// ConnectivityError indicates the request never reached or completed against
+// the server (a transport-level failure), as opposed to an HTTP response the
+// server did return (non-2xx, error body, empty choices...). Callers use it to
+// distinguish "server unreachable" from "server answered and disliked/misanswered
+// the request".
+type ConnectivityError struct {
+	Err error
 }
 
-// SpanRequest captures everything needed to build an OTel span.
-type SpanRequest struct {
-	TraceID          string
-	Name             string
-	StartTime        time.Time
-	EndTime          time.Time
-	Model            string
-	Messages         []Message
-	Response         string
-	FinishReason     string
-	PromptTokens     int
-	CompletionTokens int
-	TotalTokens      int
-	LatencyMs        int64
-	Tags             map[string]string // surfaced as MLflow trace tags
-	Error            string            // non-empty on failure
+func (e *ConnectivityError) Error() string {
+	return "openai request failed: " + e.Err.Error()
+}
+
+func (e *ConnectivityError) Unwrap() error {
+	return e.Err
 }
 
 type Client struct {
-	apiKey  string
-	model   string
-	baseURL string
-	http    *http.Client
-	tracer  Tracer
-	tags    map[string]string
+	apiKey   string
+	model    string
+	baseURL  string
+	username string
+	password string
+	http     *http.Client
 }
 
-// WithTracer sets a tracer on the client.
-func (c *Client) WithTracer(t Tracer) *Client {
-	c.tracer = t
+// BaseURL returns the base URL this client targets (used to distinguish the
+// MLflow gateway from direct OpenAI).
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
+// WithBasicAuth switches authentication from Bearer (OpenAI) to HTTP Basic
+// auth, used when talking to the MLflow gateway rather than OpenAI directly.
+func (c *Client) WithBasicAuth(username, password string) *Client {
+	c.username = username
+	c.password = password
 	return c
 }
 
-// WithTags sets trace tags attached to spans produced by this client.
-func (c *Client) WithTags(tags map[string]string) *Client {
-	c.tags = tags
+// WithBaseURL overrides the OpenAI API base URL (e.g. a self-hosted OpenAI
+// gateway server).
+func (c *Client) WithBaseURL(baseURL string) *Client {
+	c.baseURL = baseURL
+	return c
+}
+
+// WithHTTPClient sets the underlying HTTP client (mainly for tests).
+func (c *Client) WithHTTPClient(h *http.Client) *Client {
+	c.http = h
 	return c
 }
 
@@ -81,49 +89,7 @@ type Message struct {
 }
 
 // Complete sends a chat completion request and returns the reply text.
-func (c *Client) Complete(ctx context.Context, messages []Message) (_ string, callErr error) {
-	start := time.Now()
-
-	// Trace data populated after the API response is decoded.
-	var traceID string
-	var finishReason, content string
-	var promptTokens, completionTokens, totalTokens int
-
-	if c.tracer != nil {
-		tid := make([]byte, 16)
-		if _, err := rand.Read(tid); err == nil {
-			traceID = hex.EncodeToString(tid)
-		}
-	}
-	defer func() {
-		if c.tracer == nil || traceID == "" {
-			return
-		}
-		errStr := ""
-		if callErr != nil {
-			errStr = callErr.Error()
-		}
-		spanReq := SpanRequest{
-			TraceID:          traceID,
-			Name:             "openai_chat",
-			StartTime:        start,
-			EndTime:          time.Now(),
-			Model:            c.model,
-			Messages:         messages,
-			Response:         content,
-			FinishReason:     finishReason,
-			PromptTokens:     promptTokens,
-			CompletionTokens: completionTokens,
-			TotalTokens:      totalTokens,
-			LatencyMs:        time.Since(start).Milliseconds(),
-			Tags:             c.tags,
-			Error:            errStr,
-		}
-		if serr := c.tracer.CreateSpan(ctx, spanReq); serr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: trace span: %v\n", serr)
-		}
-	}()
-
+func (c *Client) Complete(ctx context.Context, messages []Message) (string, error) {
 	body, err := json.Marshal(map[string]any{
 		"model":    c.model,
 		"messages": messages,
@@ -140,32 +106,46 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (_ string, ca
 	if err != nil {
 		return "", fmt.Errorf("building request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if c.username != "" || c.password != "" {
+		req.SetBasicAuth(c.username, c.password)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("openai request failed: %w", err)
+		return "", &ConnectivityError{Err: err}
 	}
 	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading response: %w", err)
+	}
+
+	// Check the status code first so decoder/decoding errors never mask a
+	// server that rejected the request. Non-2xx responses are surfaced with
+	// the server's body for diagnostics.
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body := strings.TrimSpace(string(bodyBytes))
+		if body == "" {
+			return "", fmt.Errorf("openai request returned status %d", resp.StatusCode)
+		}
+		return "", fmt.Errorf("openai request returned status %d: %s", resp.StatusCode, body)
+	}
 
 	var result struct {
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
-			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
-		Usage *struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
-			TotalTokens      int `json:"total_tokens"`
-		} `json:"usage"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
 		return "", fmt.Errorf("decoding response: %w", err)
 	}
 	if result.Error != nil {
@@ -175,13 +155,5 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (_ string, ca
 		return "", fmt.Errorf("openai returned no choices")
 	}
 
-	content = result.Choices[0].Message.Content
-	finishReason = result.Choices[0].FinishReason
-	if result.Usage != nil {
-		promptTokens = result.Usage.PromptTokens
-		completionTokens = result.Usage.CompletionTokens
-		totalTokens = result.Usage.TotalTokens
-	}
-
-	return content, nil
+	return result.Choices[0].Message.Content, nil
 }

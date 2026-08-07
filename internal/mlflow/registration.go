@@ -1,4 +1,10 @@
-package prompt
+package mlflow
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+)
 
 type ModelVersionSearchResponse struct {
 	ModelVersions []ModelVersion `json:"model_versions"`
@@ -46,4 +52,27 @@ func (m *RegisteredModel) PromptText() string {
 		}
 	}
 	return ""
+}
+
+func (c *Client) GetPrompt(ctx context.Context, name string) (*RegisteredModel, error) {
+	params := url.Values{}
+	params.Set("name", name)
+
+	var resp RegisteredModelResponse
+	if err := c.get(ctx, "/api/2.0/mlflow/registered-models/get", params, &resp); err != nil {
+		return nil, fmt.Errorf("fetching prompt %q: %w", name, err)
+	}
+
+	return &resp.RegisteredModel, nil
+}
+
+func (c *Client) ListPrompts(ctx context.Context) ([]ModelVersion, error) {
+	params := url.Values{}
+	params.Set("filter", `tag.mlflow.prompt.is_prompt = "true"`)
+
+	var resp ModelVersionSearchResponse
+	if err := c.get(ctx, "/api/2.0/mlflow/model-versions/search", params, &resp); err != nil {
+		return nil, fmt.Errorf("listing prompts: %w", err)
+	}
+	return resp.ModelVersions, nil
 }

@@ -1,4 +1,4 @@
-package trace
+package mlflow
 
 import (
 	"context"
@@ -60,7 +60,7 @@ func TestClient_GetTrace(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL, "user", "pass")
+	c := NewClient("user", "pass", srv.URL)
 	tr, err := c.GetTrace(context.Background(), "tr-abc")
 	if err != nil {
 		t.Fatalf("GetTrace: %v", err)
@@ -128,7 +128,7 @@ func TestClient_ListTraces(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL, "", "")
+	c := NewClient("", "", srv.URL)
 	items, err := c.ListTraces(context.Background(), nil, 10)
 	if err != nil {
 		t.Fatalf("ListTraces: %v", err)
@@ -158,7 +158,7 @@ func TestClient_ListTraces_Defaults(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL, "", "")
+	c := NewClient("", "", srv.URL)
 	if _, err := c.ListTraces(context.Background(), nil, 0); err != nil {
 		t.Fatalf("ListTraces: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestClient_ListTraces_ClampOversize(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL, "", "")
+	c := NewClient("", "", srv.URL)
 	if _, err := c.ListTraces(context.Background(), nil, 600); err != nil {
 		t.Fatalf("ListTraces: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestClient_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient(srv.URL, "", "")
+	c := NewClient("", "", srv.URL)
 	_, err := c.GetTrace(context.Background(), "tr-xyz")
 	if err == nil {
 		t.Fatal("expected error")
@@ -195,5 +195,73 @@ func TestClient_Error(t *testing.T) {
 	if !strings.Contains(err.Error(), "404") {
 		// status text uses the numeric status code from the wire
 		t.Logf("error = %v", err)
+	}
+}
+
+func TestPing_OK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/health" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer srv.Close()
+
+	c := NewClient("", "", srv.URL)
+	if err := c.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping: %v", err)
+	}
+}
+
+func TestPing_Unhealthy(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("something-else"))
+	}))
+	defer srv.Close()
+
+	c := NewClient("", "", srv.URL)
+	err := c.Ping(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "unhealthy") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestPing_ErrorStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("boom"))
+	}))
+	defer srv.Close()
+
+	c := NewClient("", "", srv.URL)
+	err := c.Ping(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "unhealthy") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestPing_Unreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	url := srv.URL
+	srv.Close()
+
+	c := NewClient("", "", url)
+	err := c.Ping(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "unreachable") {
+		t.Errorf("error = %v", err)
 	}
 }

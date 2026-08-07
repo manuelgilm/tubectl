@@ -1,40 +1,11 @@
-package trace
+package mlflow
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strings"
-	"time"
-
-	"github.com/manuelgilm/tubectl/internal"
 )
-
-// Client is a REST client for reading trace metadata and spans from an MLflow
-// tracking server. It talks to the same endpoints as the MLflow web UI.
-type Client struct {
-	httpClient *http.Client
-	baseURL    string
-	username   string
-	password   string
-}
-
-// NewClient creates an MLflow trace REST client. An empty baseURL falls back
-// to the default MLflow server.
-func NewClient(baseURL, username, password string) *Client {
-	if baseURL == "" {
-		baseURL = internal.DefaultMlflowServer
-	}
-	return &Client{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		username:   username,
-		password:   password,
-	}
-}
 
 // TraceInfo is the V3 trace info record returned by the MLflow trace API.
 type TraceInfo struct {
@@ -133,6 +104,9 @@ func (c *Client) GetTrace(ctx context.Context, traceID string) (*Trace, error) {
 	if err := c.get(ctx, "/api/3.0/mlflow/traces/get", params, &resp); err != nil {
 		return nil, err
 	}
+	if resp.Trace.TraceInfo.TraceID == "" {
+		return nil, fmt.Errorf("trace %q not found", traceID)
+	}
 	return &resp.Trace, nil
 }
 
@@ -183,39 +157,4 @@ func (c *Client) ListTraces(ctx context.Context, experimentIDs []string, maxResu
 		return nil, err
 	}
 	return resp.Traces, nil
-}
-
-func (c *Client) get(ctx context.Context, path string, params url.Values, out any) error {
-	u, err := url.JoinPath(c.baseURL, path)
-	if err != nil {
-		return fmt.Errorf("building URL: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return fmt.Errorf("building request: %w", err)
-	}
-	req.URL.RawQuery = params.Encode()
-	if c.username != "" {
-		req.SetBasicAuth(c.username, c.password)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("executing request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("MLflow API error (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-
-	if out != nil {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("reading response body: %w", err)
-		}
-		return json.Unmarshal(body, out)
-	}
-	return nil
 }
