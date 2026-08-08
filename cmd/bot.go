@@ -73,7 +73,7 @@ func init() {
 	answerCommentCmd.Flags().BoolVar(&answerCommentArgs.autoApprove, "auto-approve", false, "Skip confirmation prompt and post directly")
 	answerCommentCmd.Flags().BoolVar(&answerCommentArgs.onlyPrint, "only-print", false, "Generate the reply but do not post it")
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptFile, "prompt-file", "", "Path to a YAML prompt file (alternative to the default prompt)")
-	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptName, "prompt-name", "", "Prompt name in MLflow (takes precedence over --prompt-file)")
+	answerCommentCmd.Flags().StringVar(&answerCommentArgs.promptName, "prompt-name", "", "Prompt name in MLflow, optionally as name@alias (takes precedence over --prompt-file)")
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.transcriptLanguage, "transcript-language", "en", "Language of the transcript (e.g. en, es)")
 	answerCommentCmd.Flags().StringVar(&answerCommentArgs.model, "model", "", "Gateway endpoint name (with MLflow creds) or OpenAI model (default: gpt-4o-mini)")
 }

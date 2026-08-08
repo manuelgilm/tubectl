@@ -51,7 +51,7 @@ var getPromptCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		registeredPrompt, err := client.GetPrompt(cmd.Context(), getPromptArgs.name)
+		registeredPrompt, err := client.GetPromptRef(cmd.Context(), getPromptArgs.name)
 		if err != nil {
 			return err
 		}
@@ -69,6 +69,6 @@ func init() {
 	rootCmd.AddCommand(promptCmd)
 	promptCmd.AddCommand(getPromptCmd)
 	promptCmd.AddCommand(listPromptsCmd)
-	getPromptCmd.Flags().StringVar(&getPromptArgs.name, "name", "", "Prompt Name")
+	getPromptCmd.Flags().StringVar(&getPromptArgs.name, "name", "", "Prompt name, optionally as name@alias")
 	getPromptCmd.MarkFlagRequired("name")
 }
