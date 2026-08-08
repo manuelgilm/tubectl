@@ -31,6 +31,22 @@ func (e *ConnectivityError) Unwrap() error {
 	return e.Err
 }
 
+// HTTPStatusError represents a non-2xx response from the server, carrying the
+// HTTP status code and the server-provided error body so callers can decide
+// whether a fallback is appropriate (e.g. a gateway 404 meaning the model is
+// not deployed there).
+type HTTPStatusError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPStatusError) Error() string {
+	if e.Body == "" {
+		return fmt.Sprintf("openai request returned status %d", e.StatusCode)
+	}
+	return fmt.Sprintf("openai request returned status %d: %s", e.StatusCode, e.Body)
+}
+
 type Client struct {
 	apiKey   string
 	model    string
@@ -128,11 +144,7 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (string, erro
 	// server that rejected the request. Non-2xx responses are surfaced with
 	// the server's body for diagnostics.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body := strings.TrimSpace(string(bodyBytes))
-		if body == "" {
-			return "", fmt.Errorf("openai request returned status %d", resp.StatusCode)
-		}
-		return "", fmt.Errorf("openai request returned status %d: %s", resp.StatusCode, body)
+		return "", &HTTPStatusError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(bodyBytes))}
 	}
 
 	var result struct {
