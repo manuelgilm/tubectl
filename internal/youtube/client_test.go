@@ -382,3 +382,156 @@ func TestSelectTrack(t *testing.T) {
 		}
 	})
 }
+
+func TestExtractCaptionTracks(t *testing.T) {
+	t.Run("extracts and decodes tracks", func(t *testing.T) {
+		page := []byte(`var ytInitialPlayerResponse = {"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[{"baseUrl":"https://www.youtube.com/api/timedtext?v=abc\u0026kind=asr\u0026lang=en","languageCode":"en","kind":"asr","name":{"simpleText":"English (auto)"}},{"baseUrl":"https://www.youtube.com/api/timedtext?v=abc\u0026lang=es","languageCode":"es","kind":"asr"}]}}}};`)
+		tracks, err := extractCaptionTracks(page)
+		if err != nil {
+			t.Fatalf("extractCaptionTracks: %v", err)
+		}
+		if len(tracks) != 2 {
+			t.Fatalf("got %d tracks, want 2", len(tracks))
+		}
+		if tracks[0].LanguageCode != "en" || tracks[0].Kind != "asr" {
+			t.Errorf("track[0] = %+v", tracks[0])
+		}
+		if want := "https://www.youtube.com/api/timedtext?v=abc&kind=asr&lang=en"; tracks[0].BaseURL != want {
+			t.Errorf("BaseURL = %q, want %q", tracks[0].BaseURL, want)
+		}
+	})
+
+	t.Run("brackets inside strings are skipped", func(t *testing.T) {
+		page := []byte(`{"captionTracks":[{"baseUrl":"u[0]","name":{"simpleText":"a [weird] name"},"languageCode":"en"}]}`)
+		tracks, err := extractCaptionTracks(page)
+		if err != nil {
+			t.Fatalf("extractCaptionTracks: %v", err)
+		}
+		if len(tracks) != 1 || tracks[0].BaseURL != "u[0]" {
+			t.Errorf("got %+v", tracks)
+		}
+	})
+
+	t.Run("no captionTracks", func(t *testing.T) {
+		if _, err := extractCaptionTracks([]byte(`{"playabilityStatus":{"status":"OK"}}`)); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("unterminated array", func(t *testing.T) {
+		if _, err := extractCaptionTracks([]byte(`{"captionTracks":[{"baseUrl":"x"`)); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestSelectPlayerTrack(t *testing.T) {
+	tracks := []playerCaptionTrack{
+		{LanguageCode: "en", Kind: "asr"},
+		{LanguageCode: "en", Kind: ""},
+		{LanguageCode: "es", Kind: ""},
+	}
+
+	t.Run("prefers manual over asr for matching language", func(t *testing.T) {
+		track := selectPlayerTrack(tracks, "en")
+		if track == nil || track.Kind != "" {
+			t.Errorf("got %+v, want manual en", track)
+		}
+	})
+
+	t.Run("language filter", func(t *testing.T) {
+		track := selectPlayerTrack(tracks, "es")
+		if track == nil || track.LanguageCode != "es" {
+			t.Errorf("got %+v, want es", track)
+		}
+	})
+
+	t.Run("no language picks first manual", func(t *testing.T) {
+		track := selectPlayerTrack(tracks, "")
+		if track == nil || track.Kind != "" {
+			t.Errorf("got %+v, want manual", track)
+		}
+	})
+
+	t.Run("no match returns nil", func(t *testing.T) {
+		if track := selectPlayerTrack(tracks, "fr"); track != nil {
+			t.Errorf("got %+v, want nil", track)
+		}
+	})
+}
+
+func TestDownloadPublicTranscript(t *testing.T) {
+	const xml = `<transcript><text start="0.5" dur="2.3">Hello world</text><text start="3.0" dur="1.5">Second line</text></transcript>`
+
+	t.Run("uses signed baseUrl from player response", func(t *testing.T) {
+		var srv *httptest.Server
+		srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/watch":
+				json.NewEncoder(w).Encode(struct {
+					CaptionTracks []playerCaptionTrack `json:"captionTracks"`
+				}{
+					CaptionTracks: []playerCaptionTrack{
+						{BaseURL: srv.URL + "/timedtext?kind=asr&lang=en", LanguageCode: "en", Kind: "asr"},
+					},
+				})
+			case "/timedtext":
+				if r.URL.Query().Get("kind") != "asr" {
+					t.Errorf("expected kind=asr on signed URL, got %s", r.URL.RawQuery)
+				}
+				w.Write([]byte(xml))
+			default:
+				t.Errorf("unexpected path %s", r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		c := &Client{httpClient: srv.Client(), publicBaseURL: srv.URL}
+		tr, err := c.downloadPublicTranscript(context.Background(), "vid123", "en")
+		if err != nil {
+			t.Fatalf("downloadPublicTranscript: %v", err)
+		}
+		if tr.Language != "en" || len(tr.Lines) != 2 {
+			t.Errorf("got %+v", tr)
+		}
+	})
+
+	t.Run("falls back to naive timedtext when no captionTracks", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/watch":
+				w.Write([]byte(`{"playabilityStatus":{"status":"OK"}}`))
+			case "/api/timedtext":
+				if r.URL.Query().Get("lang") != "en" {
+					t.Errorf("lang = %s", r.URL.Query().Get("lang"))
+				}
+				w.Write([]byte(xml))
+			default:
+				t.Errorf("unexpected path %s", r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		c := &Client{httpClient: srv.Client(), publicBaseURL: srv.URL}
+		tr, err := c.downloadPublicTranscript(context.Background(), "vid123", "en")
+		if err != nil {
+			t.Fatalf("downloadPublicTranscript: %v", err)
+		}
+		if len(tr.Lines) != 2 {
+			t.Errorf("got %+v", tr)
+		}
+	})
+
+	t.Run("errors when nothing is available", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"playabilityStatus":{"status":"OK"}}`))
+		}))
+		defer srv.Close()
+
+		c := &Client{httpClient: srv.Client(), publicBaseURL: srv.URL}
+		if _, err := c.downloadPublicTranscript(context.Background(), "vid123", "en"); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}

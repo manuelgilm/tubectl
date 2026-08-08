@@ -123,10 +123,10 @@ Fetch data from the YouTube Data API (requires authentication).
 |---|---|---|
 | `get` | `--video-id` | Video metadata (title, description, channel, published date) |
 | `comments` | `--video-id`, `--max-results` (default 20), `--order` (time/relevance) | Comment threads (JSON) |
-| `get-transcript` | `--video-id`, `--language` (default en), `--no-cache` | Captions/transcript (cached locally) |
+| `get-transcript` | `--video-id`, `--language` (default en), `--no-cache`, `--file` | Captions/transcript (cached locally) |
 | `comment` | `--video-id`, `--text`, `--auto-approve` | Post a top-level comment on a video |
 
-Transcripts are cached in the local SQLite database (`tubectl.db`). Pass `--no-cache` to skip the cache and always fetch from the API.
+Transcripts are cached in the local SQLite database (`tubectl.db`). Pass `--no-cache` to skip the cache and always fetch from the API. Pass `--file` to use/store `transcripts/<video-id>.txt` in the repository instead (used by the CI workflow, where the repository acts as the database).
 
 ### `tubectl comment`
 

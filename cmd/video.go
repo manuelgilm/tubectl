@@ -6,6 +6,8 @@ import (
 	"github.com/manuelgilm/tubectl/internal/storage"
 	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -22,6 +24,7 @@ var (
 	getTranscriptArgs struct {
 		videoID  string
 		noCache  bool
+		file     bool
 		language string
 	}
 	postCommentArgs struct {
@@ -64,6 +67,33 @@ timestamps. Results are cached locally for faster subsequent access.
 Use --language to select a specific language (default: en).
 Use --no-cache to bypass the cache and fetch fresh data.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if getTranscriptArgs.file {
+			path := transcriptFilePath(getTranscriptArgs.videoID)
+			if !getTranscriptArgs.noCache {
+				if text, err := readTranscriptFile(path); err == nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "Using Cached Transcript (file: %s)\n\n", path)
+					fmt.Print(text)
+					return nil
+				}
+			}
+			client, err := loadClient(cmd.Context())
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.ErrOrStderr(), "Fetching transcript from YouTube API...")
+			transcript, err := client.DownloadTranscript(cmd.Context(), getTranscriptArgs.videoID, getTranscriptArgs.language)
+			if err != nil {
+				return err
+			}
+			if err := writeTranscriptFile(path, transcript); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not write transcript file: %v\n", err)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Transcript saved to %s\n\n", path)
+			}
+			printTranscript(transcript)
+			return nil
+		}
+
 		db, err := openDB()
 		if err != nil {
 			return err
@@ -181,6 +211,7 @@ func init() {
 	getTranscriptCmd.MarkFlagRequired("video-id")
 	getTranscriptCmd.Flags().StringVar(&getTranscriptArgs.language, "language", "en", "Preferred caption language (e.g. en, es). Defaults to 'en'.")
 	getTranscriptCmd.Flags().BoolVar(&getTranscriptArgs.noCache, "no-cache", false, "Skip the local cache and always fetch from the API")
+	getTranscriptCmd.Flags().BoolVar(&getTranscriptArgs.file, "file", false, "Use the repo transcript file transcripts/<video-id>.txt instead of the local database (repository as database)")
 
 	videoCmd.AddCommand(postCommentCmd)
 	postCommentCmd.Flags().StringVar(&postCommentArgs.videoID, "video-id", "", "YouTube Video ID")
@@ -191,11 +222,73 @@ func init() {
 }
 
 func printTranscript(t *youtube.Transcript) {
+	for _, line := range formatTranscriptLines(t) {
+		fmt.Println(line)
+	}
+}
+
+// formatTranscriptLines renders a transcript as "[MM:SS] text" lines, used both
+// for printing and for the repo transcript files.
+func formatTranscriptLines(t *youtube.Transcript) []string {
+	lines := make([]string, 0, len(t.Lines))
 	for _, line := range t.Lines {
 		minutes := int(line.Start) / 60
 		seconds := int(line.Start) % 60
-		fmt.Printf("[%02d:%02d] %s\n", minutes, seconds, line.Text)
+		lines = append(lines, fmt.Sprintf("[%02d:%02d] %s", minutes, seconds, line.Text))
 	}
+	return lines
+}
+
+// transcriptFilePath returns the repo transcript file path for a video, e.g.
+// transcripts/<video-id>.txt. The directory can be overridden via the
+// TUBECTL_TRANSCRIPT_DIR environment variable.
+func transcriptFilePath(videoID string) string {
+	dir := os.Getenv("TUBECTL_TRANSCRIPT_DIR")
+	if dir == "" {
+		dir = "transcripts"
+	}
+	return filepath.Join(dir, videoID+".txt")
+}
+
+// writeTranscriptFile writes a transcript as timestamped lines to the repo
+// transcript file (used by the CI workflow to keep transcripts in git).
+func writeTranscriptFile(path string, t *youtube.Transcript) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("creating transcript directory: %w", err)
+	}
+	lines := formatTranscriptLines(t)
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		return fmt.Errorf("writing transcript file: %w", err)
+	}
+	return nil
+}
+
+func readTranscriptFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// stripTranscriptTimestamps removes the "[MM:SS] " prefix from each line of a
+// timestamped transcript file, producing the plain spoken text used in prompts.
+func stripTranscriptTimestamps(text string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if trimmed[0] == '[' {
+			if i := strings.IndexByte(trimmed, ']'); i > 0 && i <= 8 {
+				trimmed = strings.TrimSpace(trimmed[i+1:])
+			}
+		}
+		b.WriteString(trimmed)
+		b.WriteString(" ")
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func transcriptToStored(t *youtube.Transcript) (*storage.StoredTranscript, error) {
@@ -240,30 +333,39 @@ func GetTranscriptText(cmd *cobra.Command, videoID, language string) (string, er
 	}
 	defer db.Close()
 
+	// 1) Local SQLite cache is the source of truth when working locally.
 	repo := storage.NewTranscriptRepo(db)
 	st, err := repo.Load(cmd.Context(), videoID, language)
 	if err != nil {
 		return "", fmt.Errorf("loading cached transcript: %w", err)
 	}
-
-	if st == nil {
-		client, err := loadClient(cmd.Context())
-		if err != nil {
-			return "", err
-		}
-		t, err := client.DownloadTranscript(cmd.Context(), videoID, language)
-		if err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: transcript not available: %v\n", err)
-			return "", nil
-		}
-		st, err = transcriptToStored(t)
-		if err != nil {
-			return "", err
-		}
-		if saveErr := repo.Save(cmd.Context(), st); saveErr != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not cache transcript: %v\n", saveErr)
-		}
+	if st != nil {
+		return st.Content, nil
 	}
 
+	// 2) Repo transcript file (e.g. transcripts/<video-id>.txt). Used by the CI
+	// workflow, where the local database is empty on every run and transcripts
+	// are committed to git instead.
+	if text, err := readTranscriptFile(transcriptFilePath(videoID)); err == nil {
+		return stripTranscriptTimestamps(text), nil
+	}
+
+	// 3) Live fetch, cached to the local database for later use.
+	client, err := loadClient(cmd.Context())
+	if err != nil {
+		return "", err
+	}
+	t, err := client.DownloadTranscript(cmd.Context(), videoID, language)
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: transcript not available: %v\n", err)
+		return "", nil
+	}
+	st, err = transcriptToStored(t)
+	if err != nil {
+		return "", err
+	}
+	if saveErr := repo.Save(cmd.Context(), st); saveErr != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not cache transcript: %v\n", saveErr)
+	}
 	return st.Content, nil
 }

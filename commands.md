@@ -32,7 +32,7 @@ OAuth login. Use `--force` to re-authenticate even if a valid token exists.
 |---|---|---|
 | `get` | `--video-id` (req) | Video metadata (title, description, channel, date) |
 | `comments` | `--video-id` (req), `--max-results`, `--order` (`time`/`relevance`) | Comment threads (JSON). Default `--max-results`: 20 |
-| `get-transcript` | `--video-id` (req), `--language`, `--no-cache` | Captions/transcript. Cached to `~/.tubectl/transcripts/`. Default language: `en` |
+| `get-transcript` | `--video-id` (req), `--language`, `--no-cache`, `--file` | Captions/transcript. Cached locally in SQLite; `--file` keeps them as `transcripts/<video-id>.txt` in the repo (repository as database). Default language: `en` |
 | `comment` | `--video-id` (req), `--text` (req) | Post a top-level comment on a video |
 
 ## comment
@@ -83,7 +83,6 @@ The trace ID is the MLflow request id (e.g. `tr-4bf92f3577b34da6a3ce929d0e0e4736
 ```
 ~/.tubectl/
   registry.json       registered videos metadata
-  transcripts/        cached transcripts by video-id
   auth/               stored credentials per service
   config.json         CLI configuration
   prompts/            YAML prompt templates (optional)
