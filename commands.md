@@ -13,9 +13,17 @@
 
 ## auth
 
-`tubectl auth youtube [--force]`
+`tubectl auth youtube [--force] [--owner]`
 
 OAuth login. Use `--force` to re-authenticate even if a valid token exists.
+Use `--owner` to authenticate as the video-owner account instead: the token is
+saved to `~/.tubectl/auth/youtube.owner.json` and used only for transcript
+downloads (see README "Two tokens" section).
+
+`tubectl auth youtube whoami [--owner]`
+
+Print the channel ID and title for the default token, or with `--owner` for the
+owner token. Use it to confirm which account a token belongs to.
 
 ## registry
 

@@ -76,7 +76,7 @@ Use --no-cache to bypass the cache and fetch fresh data.`,
 					return nil
 				}
 			}
-			client, err := loadClient(cmd.Context())
+			client, err := loadOwnerClient(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -118,7 +118,7 @@ Use --no-cache to bypass the cache and fetch fresh data.`,
 			}
 		}
 
-		client, err := loadClient(cmd.Context())
+		client, err := loadOwnerClient(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -271,8 +271,10 @@ func readTranscriptFile(path string) (string, error) {
 	return string(data), nil
 }
 
-// stripTranscriptTimestamps removes the "[MM:SS] " prefix from each line of a
-// timestamped transcript file, producing the plain spoken text used in prompts.
+// stripTranscriptTimestamps normalizes a transcript file into the plain spoken
+// text used in prompts. It drops SRT timing lines (e.g. "0:00:00.400,0:00:05.600"
+// or "00:00:00,400 --> 00:00:05,600"), strips "[MM:SS] " prefixes, skips blank
+// lines, and joins the remaining text with spaces.
 func stripTranscriptTimestamps(text string) string {
 	var b strings.Builder
 	for _, line := range strings.Split(text, "\n") {
@@ -280,15 +282,40 @@ func stripTranscriptTimestamps(text string) string {
 		if trimmed == "" {
 			continue
 		}
+		if isTimingLine(trimmed) {
+			continue
+		}
 		if trimmed[0] == '[' {
 			if i := strings.IndexByte(trimmed, ']'); i > 0 && i <= 8 {
 				trimmed = strings.TrimSpace(trimmed[i+1:])
 			}
 		}
+		if trimmed == "" {
+			continue
+		}
 		b.WriteString(trimmed)
 		b.WriteString(" ")
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// isTimingLine reports whether a line consists only of timestamp characters
+// (digits, colons, commas, dots, dashes, greater-than, spaces), i.e. an SRT
+// cue number or cue timing like "00:00:00,400 --> 00:00:05,600".
+func isTimingLine(line string) bool {
+	if line == "" {
+		return false
+	}
+	for _, r := range line {
+		switch r {
+		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+			':', ',', '.', '-', '>', ' ':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func transcriptToStored(t *youtube.Transcript) (*storage.StoredTranscript, error) {
@@ -351,7 +378,7 @@ func GetTranscriptText(cmd *cobra.Command, videoID, language string) (string, er
 	}
 
 	// 3) Live fetch, cached to the local database for later use.
-	client, err := loadClient(cmd.Context())
+	client, err := loadOwnerClient(cmd.Context())
 	if err != nil {
 		return "", err
 	}

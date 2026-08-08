@@ -92,11 +92,14 @@ Authentication providers for YouTube and MLflow.
 ```
 tubectl auth youtube           # Authenticate interactively (if no valid token exists)
 tubectl auth youtube --force   # Force re-authentication even if a token is valid
+tubectl auth youtube --owner   # Authenticate as the video-owner account (saves youtube.owner.json)
+tubectl auth youtube whoami            # Show which channel the default token belongs to
+tubectl auth youtube whoami --owner    # Show which channel the owner token belongs to
 tubectl auth mlflow --username <user> --password <pass> [--server-url <url>]
 tubectl auth mlflow --username <user> --password <pass> [--server-url <url>] --force
 ```
 
-**YouTube**: Opens a browser URL, listens for the OAuth callback on a local port, and saves the token to `~/.tubectl/auth/youtube.json`. Requires `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` environment variables.
+**YouTube**: Opens a browser URL, listens for the OAuth callback on a local port, and saves the token to `~/.tubectl/auth/youtube.json` (or `~/.tubectl/auth/youtube.owner.json` with `--owner`). Requires `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` environment variables. Transcript downloads use the owner token when available (see the "Two tokens" section).
 
 The OAuth redirect URI must be configured in the Google Cloud Console as `http://127.0.0.1:{port}/callback` (the port is chosen at runtime).
 
@@ -126,7 +129,7 @@ Fetch data from the YouTube Data API (requires authentication).
 | `get-transcript` | `--video-id`, `--language` (default en), `--no-cache`, `--file` | Captions/transcript (cached locally) |
 | `comment` | `--video-id`, `--text`, `--auto-approve` | Post a top-level comment on a video |
 
-Transcripts are cached in the local SQLite database (`tubectl.db`). Pass `--no-cache` to skip the cache and always fetch from the API. Pass `--file` to use/store `transcripts/<video-id>.txt` in the repository instead (used by the CI workflow, where the repository acts as the database).
+Transcripts are cached in the local SQLite database (`tubectl.db`). Pass `--no-cache` to skip the cache and always fetch from the API. Pass `--file` to use/store `transcripts/<video-id>.txt` in the repository instead (used by the CI workflow, where the repository acts as the database). Transcript downloads authenticate with the owner token when available (see the "Two tokens" section).
 
 ### `tubectl comment`
 
@@ -343,8 +346,22 @@ Required secrets:
 | `YOUTUBE_CLIENT_SECRET` | YouTube OAuth client secret |
 | `OPENAI_API_KEY` | OpenAI API key for the AI bot |
 | `TUBECTL_TOKEN` | Base64-encoded OAuth token file saved by `tubectl auth youtube` |
+| `TUBECTL_OWNER_TOKEN` | Base64-encoded owner OAuth token (`~/.tubectl/auth/youtube.owner.json`) — used only for transcript downloads |
 
 To set up: run `tubectl auth youtube` locally, base64-encode `~/.tubectl/auth/youtube.json`, and add it as the `TUBECTL_TOKEN` secret.
+
+## Two tokens
+
+The bot uses two separate YouTube accounts:
+
+- **Default token** (`~/.tubectl/auth/youtube.json`, secret `TUBECTL_TOKEN`): the bot channel that reads/answers comments.
+- **Owner token** (`~/.tubectl/auth/youtube.owner.json`, secret `TUBECTL_OWNER_TOKEN`): the account that owns your videos. The `captions.download` API is **owner-only**, so transcript downloads must use it; with the wrong account they return HTTP 403.
+
+`get-transcript`, `answer-comment` (transcript context), and the CI fetch step all use the owner token when present. If it is missing, `tubectl` falls back to the default token and prints a warning. To set it up:
+
+1. Run `tubectl auth youtube --owner` while logged in as the owner account.
+2. `base64 -w0 ~/.tubectl/auth/youtube.owner.json`, then add it as the `TUBECTL_OWNER_TOKEN` secret.
+3. Verify: `tubectl auth youtube whoami --owner` should print your videos' channel.
 
 ## Makefile Targets
 
@@ -369,9 +386,13 @@ If you see errors about missing config or database files, run `tubectl init` fir
 
 Not all YouTube videos have captions enabled. `tubectl` attempts the OAuth-authenticated caption download first, then falls back to the public timedtext endpoint. If both fail, the transcript is reported as unavailable and the bot command continues without transcript context.
 
+### Caption download returns 403 / "forbidden"
+
+The caption download endpoint is owner-only. If the token used belongs to a different account than the one that uploaded the video, YouTube returns HTTP 403. Run `tubectl auth youtube whoami --owner` to check which channel the owner token belongs to, and set it up with `tubectl auth youtube --owner` as described in the "Two tokens" section above.
+
 ### Caption download returns empty body
 
-The caption download endpoint requires the video to be owned by or accessible to the authenticated account. For videos you don't own, `tubectl` falls back to the public timedtext endpoint, which works for most public videos.
+The public timedtext endpoint can return an empty body from datacenter IPs (PO-token bot protection). For videos you own, the OAuth-authenticated caption download (owner token) avoids this.
 
 ### Traces not appearing in MLflow
 

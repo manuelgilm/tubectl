@@ -308,6 +308,33 @@ func (c *Client) GetVideo(ctx context.Context, videoID string) (*Video, error) {
 	return &result.Items[0], nil
 }
 
+// Channel holds minimal metadata about a YouTube channel.
+type Channel struct {
+	ID      string `json:"id"`
+	Snippet struct {
+		Title string `json:"title"`
+	} `json:"snippet"`
+}
+
+// GetMyChannel returns the channel owned by the authenticated account (the
+// "mine" channel), used to verify which account a token belongs to.
+func (c *Client) GetMyChannel(ctx context.Context) (*Channel, error) {
+	var result struct {
+		Items []Channel `json:"items"`
+	}
+	err := c.get(ctx, "/channels", map[string]string{
+		"part": "id,snippet",
+		"mine": "true",
+	}, &result)
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Items) == 0 {
+		return nil, fmt.Errorf("no channel found for this token")
+	}
+	return &result.Items[0], nil
+}
+
 // downloadCaption fetches the raw caption body for a given caption ID in SRT format.
 func (c *Client) downloadCaption(ctx context.Context, captionID string) ([]byte, error) {
 
@@ -338,7 +365,11 @@ func (c *Client) downloadCaption(ctx context.Context, captionID string) ([]byte,
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("caption download returned status %d: %s", resp.StatusCode, string(body))
+		err := fmt.Errorf("caption download returned status %d: %s", resp.StatusCode, string(body))
+		if resp.StatusCode == http.StatusForbidden {
+			return nil, fmt.Errorf("%w — captions.download requires the account that owns the video; run 'tubectl auth youtube whoami --owner' to verify the owner token, then 'tubectl auth youtube --owner' to set it", err)
+		}
+		return nil, err
 	}
 	if len(body) == 0 {
 		return nil, fmt.Errorf("caption download returned empty body — the video may not be owned by your account")

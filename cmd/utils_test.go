@@ -3,11 +3,14 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
@@ -188,5 +191,74 @@ func TestGenerateAnswer_Connectivity_FallsBackToOpenAI(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "OPENAI_API_KEY") {
 		t.Errorf("expected fallback to OpenAI (missing key error), got: %v", err)
+	}
+}
+
+func TestLoadOwnerClient_fallsBackToDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TUBECTL_HOME", dir)
+
+	auth := filepath.Join(dir, "auth")
+	if err := os.MkdirAll(auth, 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	writeTestToken(t, filepath.Join(auth, "youtube.json"))
+
+	client, err := loadOwnerClient(context.Background())
+	if err != nil {
+		t.Fatalf("loadOwnerClient: %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected a client")
+	}
+}
+
+func TestLoadOwnerClient_prefersOwnerToken(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TUBECTL_HOME", dir)
+
+	auth := filepath.Join(dir, "auth")
+	if err := os.MkdirAll(auth, 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// Owner token present, default token deliberately corrupt: if the owner
+	// token were ignored, loading the default would fail.
+	writeTestToken(t, filepath.Join(auth, "youtube.owner.json"))
+	if err := os.WriteFile(filepath.Join(auth, "youtube.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	client, err := loadOwnerClient(context.Background())
+	if err != nil {
+		t.Fatalf("loadOwnerClient: %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected a client")
+	}
+}
+
+func TestLoadOwnerClient_errorWhenNoToken(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TUBECTL_HOME", dir)
+
+	if _, err := loadOwnerClient(context.Background()); err == nil {
+		t.Fatal("expected error when no token exists")
+	}
+}
+
+func writeTestToken(t *testing.T, path string) {
+	t.Helper()
+	tok := youtube.Token{
+		AccessToken:  "test-access",
+		RefreshToken: "test-refresh",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(time.Hour),
+	}
+	data, err := json.Marshal(tok)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
 	}
 }

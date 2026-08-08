@@ -22,6 +22,9 @@ import (
 
 // Function to get the tubectl home directoy
 func TubeCtlHome() (string, error) {
+	if home := os.Getenv("TUBECTL_HOME"); home != "" {
+		return home, nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("getting home directory: %w", err)
@@ -132,8 +135,26 @@ func loadClient(ctx context.Context) (*youtube.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	return loadYoutubeClient(ctx, filepath.Join(home, "auth", "youtube.json"))
+}
 
-	tokenPath := filepath.Join(home, "auth", "youtube.json")
+// loadOwnerClient loads the YouTube OAuth token for the account that owns the
+// videos (used only for transcript downloads). If no owner token is configured
+// it falls back to the default token so single-token setups keep working.
+func loadOwnerClient(ctx context.Context) (*youtube.Client, error) {
+	home, err := TubeCtlHome()
+	if err != nil {
+		return nil, err
+	}
+	ownerPath := filepath.Join(home, "auth", "youtube.owner.json")
+	if _, err := os.Stat(ownerPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: owner token not found at %s, falling back to the default token (transcript downloads require the video-owner account)\n", ownerPath)
+		return loadYoutubeClient(ctx, filepath.Join(home, "auth", "youtube.json"))
+	}
+	return loadYoutubeClient(ctx, ownerPath)
+}
+
+func loadYoutubeClient(ctx context.Context, tokenPath string) (*youtube.Client, error) {
 	token, err := youtube.LoadToken(tokenPath)
 	if err != nil {
 		return nil, fmt.Errorf("loading token: %w", err)
