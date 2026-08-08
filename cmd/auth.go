@@ -13,6 +13,7 @@ import (
 var (
 	authYoutubeArgs struct {
 		forceLogin bool
+		owner      bool
 	}
 	authMlflowArgs struct {
 		forceLogin bool
@@ -20,12 +21,18 @@ var (
 		password   string
 		serverURL  string
 	}
+	whoamiArgs struct {
+		owner bool
+	}
 )
 var authYoutubeCmd = &cobra.Command{
 	Use:   "youtube",
 	Short: "Authenticate with Youtube via OAuth 2.0",
 	Long: `Opens a browser for OAuth 2.0 consent. The obtained token is
-saved to ~/.tubectl/auth/youtube.json for reuse.
+saved to ~/.tubectl/auth/youtube.json for reuse, or to
+~/.tubectl/auth/youtube.owner.json when --owner is given. The owner
+token is the account that owns your videos and is used only for
+transcript downloads.
 
 Requires YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET environment
 variables. Use --force to re-authenticate.`,
@@ -35,7 +42,11 @@ variables. Use --force to re-authenticate.`,
 			return err
 		}
 
-		tokenPath := filepath.Join(home, "auth", "youtube.json")
+		tokenName := "youtube.json"
+		if authYoutubeArgs.owner {
+			tokenName = "youtube.owner.json"
+		}
+		tokenPath := filepath.Join(home, "auth", tokenName)
 		// check if a token already exists
 		if !authYoutubeArgs.forceLogin {
 			if token, err := youtube.LoadToken(tokenPath); err == nil {
@@ -93,6 +104,38 @@ Use --force to overwrite existing credentials.`,
 	},
 }
 
+var authWhoamiCmd = &cobra.Command{
+	Use:   "whoami",
+	Short: "Show which YouTube channel the current token belongs to",
+	Long: `Shows the channel ID and title for the authenticated account.
+With --owner, checks the owner token (~/.tubectl/auth/youtube.owner.json)
+instead of the default token.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var (
+			client *youtube.Client
+			err    error
+		)
+		if whoamiArgs.owner {
+			client, err = loadOwnerClient(cmd.Context())
+		} else {
+			client, err = loadClient(cmd.Context())
+		}
+		if err != nil {
+			return err
+		}
+		ch, err := client.GetMyChannel(cmd.Context())
+		if err != nil {
+			return err
+		}
+		label := "default"
+		if whoamiArgs.owner {
+			label = "owner"
+		}
+		fmt.Printf("%s token -> channel %s (%s)\n", label, ch.ID, ch.Snippet.Title)
+		return nil
+	},
+}
+
 var authCmd = &cobra.Command{
 	Use:   "auth",
 	Short: "Manage authentication providers",
@@ -102,6 +145,9 @@ func init() {
 	rootCmd.AddCommand(authCmd)
 	authCmd.AddCommand(authYoutubeCmd)
 	authYoutubeCmd.Flags().BoolVar(&authYoutubeArgs.forceLogin, "force", false, "Force re-authentication even if a valid token exists")
+	authYoutubeCmd.Flags().BoolVar(&authYoutubeArgs.owner, "owner", false, "Authenticate as the video owner (token saved to youtube.owner.json)")
+	authYoutubeCmd.AddCommand(authWhoamiCmd)
+	authWhoamiCmd.Flags().BoolVar(&whoamiArgs.owner, "owner", false, "Check the owner token instead of the default token")
 	authCmd.AddCommand(authMlflowCmd)
 	authMlflowCmd.Flags().StringVar(&authMlflowArgs.username, "username", "", "MLflow username")
 	authMlflowCmd.Flags().StringVar(&authMlflowArgs.password, "password", "", "MLflow password")
