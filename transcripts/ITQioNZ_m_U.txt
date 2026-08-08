@@ -1,0 +1,70 @@
+[00:00] Hi everyone, welcome to this new video.
+[00:02] In today's video, we're going to
+[00:04] continue working with online inference
+[00:06] with MLflow. In the previous video, we
+[00:08] saw how to uh run the local inference
+[00:12] server using MLflow and we explored the
+[00:16] serving endpoints that MFlow provides.
+[00:19] Now, in today's video, I'm going to
+[00:21] showcase the validations that MLflow
+[00:23] does when we are making these um
+[00:25] requests.
+[00:27] So the first validation is about the
+[00:29] schema, the model schema. When we
+[00:31] register the model, we specify as um a
+[00:35] model signature, right? Well,
+[00:38] uh what we're going to do here to
+[00:40] trigger that validation is to change the
+[00:42] name of the column, right? Uh separate
+[00:45] length to SL. Now what I'm doing here is
+[00:49] changing the schema of the payload or
+[00:52] the data that I sending to the inference
+[00:55] server. So, MLflow will be um basically
+[00:59] sorry MLFlow will detect this change um
+[01:02] basically ask for this
+[01:05] um column because remember that when we
+[01:08] trained the model and we specify a model
+[01:11] signature and we are MLflow is enforcing
+[01:15] it. So let me run the entry point.
+[01:18] It is CLF online inference.
+[01:22] Okay, it says uh error model is missing
+[01:25] the input set and left right because we
+[01:28] didn't send that uh uh column. What we
+[01:32] sent is it's being shown here SL and the
+[01:36] rest of the columns
+[01:38] but at the same time it says that an
+[01:40] additional or extra input was detected
+[01:44] which is SL.
+[01:48] So another validation that MFlow does is
+[01:50] about the data type.
+[01:54] What I'm going to do to trigger this
+[01:56] validation is to modify one of the
+[01:58] values of the column set and length. Um
+[02:01] I'm going to put this string invalid
+[02:04] value. So let me run the code
+[02:10] and it should throw an error. Could not
+[02:12] convert a string to float invalid value.
+[02:14] So it says basically invalid input data
+[02:17] is not compatible with model signature
+[02:19] as um as we know right fail to convert
+[02:22] column sele to type float 64.
+[02:26] So what is happening is that MLflow will
+[02:29] try to transform or to convert um the
+[02:32] string to a float. For example, this
+[02:34] string, right? As you can see here, this
+[02:36] is an string. But internally, MLFlow
+[02:39] will try to convert the string to float.
+[02:42] And in this case, it should work. Yes,
+[02:44] it's working. But
+[02:47] since in this case, I'm using this
+[02:49] string invalid value. Um I cannot just
+[02:53] convert that to a number, right? So,
+[02:56] MLflow is throwing that error.
+[02:59] So these are like validations that are
+[03:02] very helpful um
+[03:06] when we are um
+[03:09] uh making these API calls or trying to
+[03:12] get predictions uh from the local
+[03:13] inference server.
+[03:16] Well, that's all for this video. Thanks
+[03:18] for watching it and see you next time.

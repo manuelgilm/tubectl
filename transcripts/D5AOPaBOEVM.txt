@@ -1,0 +1,115 @@
+[00:00] Hi everyone, welcome to this new video.
+[00:03] In today's video, we're going to
+[00:04] continue working with online inference
+[00:06] with MLflow. So in the previous video, I
+[00:09] show you how to use the CSV format to
+[00:12] send the features to the server and get
+[00:14] predictions. In today's video, we're
+[00:16] going to
+[00:18] uh see the JSON input, right? So if you
+[00:23] cannot let's say send the CSV data or
+[00:26] the features as CSV you can use this um
+[00:30] mechanism to send the data. It's
+[00:31] basically sending a dictionary, right?
+[00:34] And there are
+[00:36] multiple formats you can use like
+[00:40] you can grab your data or your payload
+[00:43] with the key data frame split right and
+[00:46] in this case it looks like this
+[00:50] and uses the split orientation for data
+[00:53] frames for pandas the data frames
+[00:55] basically you can use um oh it's too
+[01:00] the other one is uh data frame rigor
+[01:02] which mlflow does not recommend. Because
+[01:06] um as you can see here it says that when
+[01:10] we use this format um uh the order is
+[01:15] not guaranteed right it says we do not
+[01:18] recommend using this format because it
+[01:20] is not guaranteed to preserve column
+[01:22] ordering.
+[01:24] Um the other formats that we have is
+[01:27] instances and inputs um which is when we
+[01:30] are using like deep learning and maybe
+[01:33] um GNI models but that's topic for a
+[01:36] different video
+[01:37] since we are using um data frame right
+[01:40] because we're working with the IDIS data
+[01:42] set and this is not recommended I'm
+[01:45] going to basically pick this one data
+[01:47] frame split and this is the one I'm
+[01:49] going to show you just right now. So let
+[01:51] me show you switch to the the visual
+[01:55] studio code environment and here I have
+[01:58] this uh function invocation JSON which
+[02:02] is um under examples then it is
+[02:05] classifier and then online inference
+[02:08] just a reminder so here we're doing some
+[02:11] something similar to what we did during
+[02:13] the previous video we get the data right
+[02:17] then we build the payload
+[02:20] notice here that we are using data frame
+[02:22] split
+[02:24] and then we have like uh we're getting
+[02:26] some samples and we are using this
+[02:29] pandas method to get the desired uh
+[02:34] format. So I'm going to just print the
+[02:35] payload to show you how this looks like.
+[02:39] So I'm going to print
+[02:43] payload
+[02:45] and
+[02:48] let me go to the pi projectl file and
+[02:52] this is the entry point.
+[02:55] So I'm going to run
+[03:01] to run
+[03:03] and the name of the entry point.
+[03:08] And this is how it looks like. Let me
+[03:10] use just a single uh sample so it's
+[03:13] easier to notice the structure of the
+[03:16] payload.
+[03:19] Mhm. Okay. So we have the index, the
+[03:22] columns, right, which are like the they
+[03:25] are the name of the features
+[03:27] and data, right?
+[03:31] Which is the actual values, right?
+[03:34] So now that we saw that we can uncomment
+[03:38] the rest and show you
+[03:41] the process which is basically the same
+[03:43] right we make um well the main
+[03:46] difference is that in this case for the
+[03:48] headers I need to define application
+[03:50] JSON because I'm sending the dictionary
+[03:52] right or a JSON object
+[03:56] um then I'm using the invocations method
+[04:00] and making the pause request test
+[04:03] then if the the status code is 200 which
+[04:06] means that it's okay I'm going to get
+[04:08] the predictions key from the response of
+[04:11] the request and then I'm going to build
+[04:14] this data frame with the labels and the
+[04:16] predictions. So let me run this again.
+[04:20] And as a reminder
+[04:22] that I have this model right running um
+[04:27] here right. So the model is already
+[04:29] running in the inference server. That's
+[04:31] why these entry points are working. So
+[04:34] it looks like a perfect prediction.
+[04:37] I am going to provide let's say like
+[04:42] more samples just to notice the the
+[04:44] predictions.
+[04:48] Mhm. Okay, we get the predictions.
+[04:52] So that's all for this video. In the
+[04:54] next video, I'm going to show you the
+[04:56] validations that MLflow performs
+[04:59] um when we are making the API request
+[05:01] because if there is an error in the
+[05:03] let's say data type of the payload or
+[05:06] the name of the features well MLflow
+[05:08] will validate that data and throw an
+[05:10] error because
+[05:12] you are supposed to define like a
+[05:14] signature for the model and ideally you
+[05:17] need to follow that uh signature. So in
+[05:20] the next video I'm going to show you
+[05:21] those validations.
+[05:23] Thanks for watching this video and see
+[05:25] you next time.
