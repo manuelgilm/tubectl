@@ -1,4 +1,6 @@
 name: Reply to new comments
+permissions:
+  contents: write
 env:
   YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
   YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -41,14 +43,6 @@ jobs:
       - name: Build tubectl
         run: go build -o tubectl .
 
-      - name: Cache tubectl data
-        uses: actions/cache@v4
-        with:
-          path: ~/.tubectl
-          key: tubectl-${{ hashFiles('registered_videos.yaml') }}
-          restore-keys: |
-            tubectl-
-
       - name: Restore OAuth token
         run: |
           mkdir -p ~/.tubectl/auth
@@ -72,7 +66,8 @@ jobs:
           for VIDEO_ID in $VIDEO_IDS; do
             echo "Fetching comments for $VIDEO_ID (since $SINCE)..."
 
-            ./tubectl video get-transcript --video-id "$VIDEO_ID" --language en || true
+            ./tubectl video get-transcript --video-id "$VIDEO_ID" --language en --file \
+              || echo "Warning: transcript fetch failed for $VIDEO_ID"
 
             ./tubectl video comments --video-id "$VIDEO_ID" --max-results 50 --order time > raw.json
 
@@ -87,6 +82,23 @@ jobs:
           UNREPLIED=$(jq '[.[] | select(.replied == false)] | length' pending.json)
           echo "has_comments=$UNREPLIED" >> "$GITHUB_OUTPUT"
           echo "Found $UNREPLIED unreplied comment(s)."
+
+      - name: Commit transcript files
+        run: |
+          git config user.name "tubectl-bot"
+          git config user.email "tubectl-bot@users.noreply.github.com"
+          if [ ! -d transcripts ]; then
+            echo "No transcripts directory yet; nothing to commit."
+            exit 0
+          fi
+          git add transcripts/
+          if git diff --cached --quiet; then
+            echo "No transcript changes to commit."
+          else
+            git commit -m "Update video transcripts"
+            git pull --rebase --autostash || true
+            git push
+          fi
 
       - name: Upload pending comments
         if: steps.fetch.outputs.has_comments != '0'
