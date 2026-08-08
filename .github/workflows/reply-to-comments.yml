@@ -49,6 +49,16 @@ jobs:
           echo "${{ secrets.TUBECTL_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.json
           chmod 600 ~/.tubectl/auth/youtube.json
 
+      - name: Restore owner OAuth token
+        run: |
+          mkdir -p ~/.tubectl/auth
+          if [ -n "${{ secrets.TUBECTL_OWNER_TOKEN }}" ]; then
+            echo "${{ secrets.TUBECTL_OWNER_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.owner.json
+            chmod 600 ~/.tubectl/auth/youtube.owner.json
+          else
+            echo "TUBECTL_OWNER_TOKEN not set; transcript downloads will fall back to the default token."
+          fi
+
       - name: Register videos in DB
         run: |
           for VID in $(yq -r '.videos[]' registered_videos.yaml); do
@@ -131,6 +141,16 @@ jobs:
           mkdir -p ~/.tubectl/auth
           echo "${{ secrets.TUBECTL_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.json
           chmod 600 ~/.tubectl/auth/youtube.json
+
+      - name: Restore owner OAuth token
+        run: |
+          mkdir -p ~/.tubectl/auth
+          if [ -n "${{ secrets.TUBECTL_OWNER_TOKEN }}" ]; then
+            echo "${{ secrets.TUBECTL_OWNER_TOKEN }}" | base64 -d --ignore-garbage > ~/.tubectl/auth/youtube.owner.json
+            chmod 600 ~/.tubectl/auth/youtube.owner.json
+          else
+            echo "TUBECTL_OWNER_TOKEN not set; transcript downloads will fall back to the default token."
+          fi
 
       - name: Register videos in DB
         run: |
