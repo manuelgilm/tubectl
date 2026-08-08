@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -534,4 +535,72 @@ func TestDownloadPublicTranscript(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
+}
+
+func TestGetMyChannel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/channels" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("mine") != "true" {
+			t.Errorf("mine = %s", r.URL.Query().Get("mine"))
+		}
+		if r.URL.Query().Get("part") != "id,snippet" {
+			t.Errorf("part = %s", r.URL.Query().Get("part"))
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"items": []any{
+				map[string]any{
+					"id": "UCmyowner",
+					"snippet": map[string]any{
+						"title": "My Owner Channel",
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv)
+	ch, err := c.GetMyChannel(context.Background())
+	if err != nil {
+		t.Fatalf("GetMyChannel: %v", err)
+	}
+	if ch.ID != "UCmyowner" || ch.Snippet.Title != "My Owner Channel" {
+		t.Errorf("channel = %+v", ch)
+	}
+}
+
+func TestGetMyChannel_noChannel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"items": []any{}})
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv)
+	if _, err := c.GetMyChannel(context.Background()); err == nil {
+		t.Fatal("expected error when no channel")
+	}
+}
+
+func TestDownloadCaption_forbiddenIncludesHint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{
+				"code":    403,
+				"message": "forbidden",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newTestClient(srv)
+	_, err := c.downloadCaption(context.Background(), "cap1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "auth youtube whoami --owner") {
+		t.Errorf("error should hint about the owner token: %v", err)
+	}
 }
