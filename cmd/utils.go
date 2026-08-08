@@ -14,6 +14,7 @@ import (
 	"github.com/manuelgilm/tubectl/internal/youtube"
 	"github.com/spf13/cobra"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -297,17 +298,20 @@ func GenerateAnswer(cmd *cobra.Command, resolvedTemplate, model string) (string,
 		return reply, nil
 	}
 	// Fall back to OpenAI directly only when the primary backend was the MLflow
-	// gateway AND the failure was connectivity (server unreachable). A server
-	// that responded (HTTP error, empty choices, ...) indicates a config
-	// problem and must surface loudly instead of silently using OpenAI.
+	// gateway AND the failure was either connectivity (server unreachable) or
+	// the gateway answered 404 (the requested model is not deployed there). Any
+	// other response (auth, validation, 5xx, ...) indicates a config problem and
+	// must surface loudly instead of silently using OpenAI.
 	if !strings.Contains(aiClient.BaseURL(), "/gateway/mlflow/v1") {
 		return "", fmt.Errorf("AI completion failed: %w", err)
 	}
 	var connErr *ai.ConnectivityError
-	if !errors.As(err, &connErr) {
+	var statusErr *ai.HTTPStatusError
+	if !errors.As(err, &connErr) &&
+		!(errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound) {
 		return "", fmt.Errorf("AI completion failed: %w", err)
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow gateway unreachable (%v), falling back to OpenAI\n", connErr)
+	fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow gateway unavailable (%v), falling back to OpenAI\n", err)
 	openaiClient, oerr := newOpenAIClient(model)
 	if oerr != nil {
 		return "", fmt.Errorf("AI completion failed: %w", oerr)

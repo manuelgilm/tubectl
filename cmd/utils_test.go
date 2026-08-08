@@ -132,6 +132,39 @@ func TestGenerateAnswer_ServerResponded_NoFallback(t *testing.T) {
 	}
 }
 
+func TestGenerateAnswer_GatewayEndpointNotFound_FallsBackToOpenAI(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MLFLOW_TRACKING_USERNAME", "user")
+	t.Setenv("MLFLOW_TRACKING_PASSWORD", "pass")
+
+	// Gateway is up but has no endpoint for the requested model. This means
+	// the model is not deployed there, so the request must fall back to OpenAI.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"detail":{"error_code":"RESOURCE_DOES_NOT_EXIST","message":"GatewayEndpoint not found (name='gpt-4o-mini')"}}`))
+	}))
+	defer srv.Close()
+	t.Setenv("MLFLOW_SERVER_URL", srv.URL)
+	t.Setenv("OPENAI_API_KEY", "") // if fallback ran it would error on missing key
+
+	var stderr bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetErr(&stderr)
+	cmd.SetContext(context.Background())
+
+	_, err := GenerateAnswer(cmd, "resolved template", "gpt-4o-mini")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "OPENAI_API_KEY") {
+		t.Errorf("expected fallback to OpenAI (missing key error), got: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "falling back to OpenAI") {
+		t.Errorf("expected fallback warning on stderr, got: %q", stderr.String())
+	}
+}
+
 func TestGenerateAnswer_Connectivity_FallsBackToOpenAI(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
