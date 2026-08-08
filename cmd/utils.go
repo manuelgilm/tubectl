@@ -194,7 +194,7 @@ func ResolvePromptFromMLflowRegistry(cmd *cobra.Command, promptName, commentText
 		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow client unavailable (%v), falling back to default prompt\n", err)
 		return prompting.DefaultBotPromptText(commentText, transcriptText), nil
 	}
-	registered, err := mlflowClient.GetPrompt(cmd.Context(), promptName)
+	registered, err := mlflowClient.GetPromptRef(cmd.Context(), promptName)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: MLflow prompt %q fetch failed (%v), falling back to default prompt\n", promptName, err)
 		return prompting.DefaultBotPromptText(commentText, transcriptText), nil
@@ -224,7 +224,7 @@ func resolveBotPrompt(cmd *cobra.Command, w io.Writer, commentText, transcriptTe
 	if err != nil {
 		fmt.Fprintf(w, "Warning: MLflow client unavailable (%v), falling back to local prompt\n", err)
 	} else {
-		registered, err := mlflowClient.GetPrompt(cmd.Context(), modelName)
+		registered, err := mlflowClient.GetPromptRef(cmd.Context(), modelName)
 		if err != nil {
 			fmt.Fprintf(w, "Warning: MLflow prompt %q fetch failed (%v), falling back to local prompt\n", modelName, err)
 		} else {
