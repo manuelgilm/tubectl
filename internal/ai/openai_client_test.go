@@ -316,6 +316,16 @@ func TestComplete_StatusCode(t *testing.T) {
 		if !strings.Contains(err.Error(), "502") || !strings.Contains(err.Error(), "upstream exploded") {
 			t.Errorf("error = %v", err)
 		}
+		var statusErr *HTTPStatusError
+		if !errors.As(err, &statusErr) {
+			t.Fatalf("expected *HTTPStatusError, got %T", err)
+		}
+		if statusErr.StatusCode != http.StatusBadGateway {
+			t.Errorf("StatusCode = %d", statusErr.StatusCode)
+		}
+		if statusErr.Body != "upstream exploded" {
+			t.Errorf("Body = %q", statusErr.Body)
+		}
 	})
 
 	t.Run("empty body on non-2xx still errors", func(t *testing.T) {
@@ -337,6 +347,16 @@ func TestComplete_StatusCode(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "504") {
 			t.Errorf("error = %v", err)
+		}
+		var statusErr *HTTPStatusError
+		if !errors.As(err, &statusErr) {
+			t.Fatalf("expected *HTTPStatusError, got %T", err)
+		}
+		if statusErr.StatusCode != http.StatusGatewayTimeout {
+			t.Errorf("StatusCode = %d", statusErr.StatusCode)
+		}
+		if statusErr.Body != "" {
+			t.Errorf("Body = %q, want empty", statusErr.Body)
 		}
 	})
 }
